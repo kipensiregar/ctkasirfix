@@ -1,0 +1,20 @@
+PENTING: UPLOAD ISI ZIP KE ROOT REPOSITORY
+
+1. Ekstrak ZIP ini.
+2. Buka folder hasil ekstrak.
+3. Pilih semua isi di dalamnya (termasuk folder .github), bukan folder pembungkusnya.
+4. Upload ke halaman Code repository GitHub.
+5. Setelah upload, klik Commit changes ke branch main.
+
+Struktur yang benar saat membuka halaman utama repository:
+  .github/workflows/build_apk.yml
+  lib/main.dart
+  lib/helpers/database_helper.dart
+  pubspec.yaml
+
+Jangan upload file ZIP saja dan jangan membuat folder tambahan seperti:
+  warung_medan_root/lib/main.dart
+
+Setelah commit, buka Actions > Build Android APK > Run workflow.
+Build ini akan gagal dengan pesan jelas jika lib/main.dart kasir tidak ada.
+APK diunduh dari Artifacts > warung-medan-apk.
