@@ -4,6 +4,11 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.2.1 — No. meja & nama pemesan
+
+- Kolom No. meja dan Nama pemesan di panel Pesanan (opsional), ikut tersimpan ke transaksi dan pesanan dapur.
+- Aplikasi tidak lagi memuat ulang sendiri saat kunjungan pertama.
+
 ### v0.2.0 — Modul Kasir
 
 - Katalog kartu, pencarian, filter kategori, keranjang +/−, total.

@@ -51,12 +51,16 @@ async function registerSW() {
   }
   try {
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    let updateRequested = false;
 
     const showUpdate = (worker) => {
       const el = banner('update',
         `<span>Versi baru aplikasi tersedia. Data Anda tetap aman.</span>
          <button class="btn" type="button">Perbarui sekarang</button>`, { info: true });
-      el.querySelector('button').onclick = () => worker.postMessage({ type: 'SKIP_WAITING' });
+      el.querySelector('button').onclick = () => {
+        updateRequested = true;
+        worker.postMessage({ type: 'SKIP_WAITING' });
+      };
     };
 
     if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
@@ -67,9 +71,11 @@ async function registerSW() {
       });
     });
 
+    // Muat ulang HANYA jika pengguna menekan "Perbarui sekarang".
+    // (Saat kunjungan pertama, SW juga mengambil alih halaman — jangan reload saat itu.)
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return;
+      if (reloading || !updateRequested) return;
       reloading = true;
       location.reload();
     });

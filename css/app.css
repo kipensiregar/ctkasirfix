@@ -381,3 +381,10 @@ body.modal-open { overflow: hidden; }
 label.check { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-top: 12px; font-weight: 600; }
 label.check input { width: 24px; height: 24px; accent-color: var(--green); }
 [hidden] { display: none !important; }
+
+/* Meja & nama pemesan */
+.cart-who { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 0 18px 12px; border-bottom: 1px solid var(--line); }
+.cart-who label { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.cart-who input { min-height: 46px; padding: 8px 12px; }
+.who-table input { text-align: center; font-weight: 700; font-size: 18px; }
+.who-line { margin: 4px 0 0; font-weight: 700; font-size: 17px; color: var(--green-dark); }

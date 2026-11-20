@@ -5,7 +5,7 @@ import { withTx, getMany, uid, localDateKey } from '../db.js';
 
 /**
  * @param {{productId:string, qty:number}[]} cart
- * @param {{cashReceived:number, customerName?:string, note?:string}} payment
+ * @param {{cashReceived:number, customerName?:string, tableNo?:string, note?:string}} payment
  * @returns {Promise<{transaction:object, items:object[], order:object}>}
  */
 export function checkout(cart, payment) {
@@ -26,6 +26,7 @@ export function checkout(cart, payment) {
   const createdAt = now.toISOString();
   const dateKey = localDateKey(now);
   const customerName = String(payment.customerName || '').trim().slice(0, 60);
+  const tableNo = String(payment.tableNo || '').trim().slice(0, 10);
   const note = String(payment.note || '').trim().slice(0, 200);
 
   return withTx(
@@ -82,14 +83,14 @@ export function checkout(cart, payment) {
             subtotal: total, discount: 0, total,
             cashReceived: cash, change: cash - total,
             itemCount: lines.reduce((a, l) => a + l.qty, 0),
-            customerName, note,
+            customerName, tableNo, note,
           };
           s.transactions.put(transaction);
 
           // 4. Pesanan untuk dapur.
           const order = {
             id: uid(), transactionId: trxId, number, queueNo, dateKey,
-            status: 'menunggu', customerName, note,
+            status: 'menunggu', customerName, tableNo, note,
             items: items.map((it) => ({ name: it.name, qty: it.qty })),
             createdAt, updatedAt: createdAt,
           };

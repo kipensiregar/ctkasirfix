@@ -17,8 +17,14 @@ export async function render(view) {
     cart: new Map(), // productId -> qty (urutan sesuai saat ditambahkan)
     cat: 'all',
     q: '',
+    tableNo: '',
+    customerName: '',
   };
   // Pulihkan keranjang yang belum dibayar (mis. setelah refresh / aplikasi tertutup).
+  if (draft) {
+    state.tableNo = String(draft.tableNo || '');
+    state.customerName = String(draft.customerName || '');
+  }
   if (draft && Array.isArray(draft.items)) {
     for (const { productId, qty } of draft.items) {
       if (productById.has(productId) && Number.isInteger(qty) && qty > 0) state.cart.set(productId, qty);
@@ -51,6 +57,16 @@ export async function render(view) {
           <h2>Pesanan</h2>
           <button type="button" class="link-btn" id="cart-clear">Kosongkan</button>
         </div>
+        <div class="cart-who">
+          <div class="who-table">
+            <label for="cart-table">No. meja</label>
+            <input id="cart-table" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="—">
+          </div>
+          <div class="who-name">
+            <label for="cart-name">Nama pemesan</label>
+            <input id="cart-name" type="text" maxlength="60" autocomplete="off" placeholder="mis. Bu Rina">
+          </div>
+        </div>
         <div class="cart-items" id="cart-items"></div>
         <div class="cart-foot">
           <div class="cart-row"><span class="muted">Jumlah item</span><span id="cart-count">0</span></div>
@@ -69,7 +85,9 @@ export async function render(view) {
     clearTimeout(draftTimer);
     draftTimer = null;
     const items = [...state.cart].map(([productId, qty]) => ({ productId, qty }));
-    return setSetting(DRAFT_KEY, items.length ? { items } : null).catch(() => {});
+    const hasWho = state.tableNo.trim() || state.customerName.trim();
+    return setSetting(DRAFT_KEY, items.length || hasWho
+      ? { items, tableNo: state.tableNo, customerName: state.customerName } : null).catch(() => {});
   };
   const saveDraft = () => {
     clearTimeout(draftTimer);
@@ -177,9 +195,17 @@ export async function render(view) {
   view.querySelector('#cart-clear').addEventListener('click', () => {
     if (!state.cart.size || !confirm('Kosongkan semua item di pesanan ini?')) return;
     state.cart.clear();
+    state.tableNo = state.customerName = '';
+    tableInput.value = nameInput.value = '';
     refresh();
   });
   view.querySelector('#btn-pay').addEventListener('click', () => openPayment());
+  const tableInput = view.querySelector('#cart-table');
+  const nameInput = view.querySelector('#cart-name');
+  tableInput.value = state.tableNo;
+  nameInput.value = state.customerName;
+  tableInput.addEventListener('input', () => { state.tableNo = tableInput.value; saveDraft(); });
+  nameInput.addEventListener('input', () => { state.customerName = nameInput.value; saveDraft(); });
 
   // ---------- Pembayaran ----------
   function openPayment() {
@@ -188,6 +214,7 @@ export async function render(view) {
     const suggestions = cashSuggestions(total);
     const { el, close } = openModal(`
       <div class="modal-head"><h2>Pembayaran Tunai</h2><button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+      ${whoLine(state) ? `<p class="who-line">${esc(whoLine(state))}</p>` : ''}
       <div class="pay-total"><span class="muted">Total</span><b>${rupiah(total)}</b></div>
       <label for="pay-cash">Uang diterima</label>
       <input id="pay-cash" type="text" inputmode="numeric" autocomplete="off" class="money-input" placeholder="0">
@@ -196,9 +223,7 @@ export async function render(view) {
       </div>
       <div class="pay-change"><span>Kembalian</span><b id="pay-change">—</b></div>
       <details class="pay-more">
-        <summary>Nama pelanggan &amp; catatan (opsional)</summary>
-        <label for="pay-name">Nama pelanggan</label>
-        <input id="pay-name" type="text" maxlength="60" autocomplete="off">
+        <summary>Catatan untuk dapur (opsional)</summary>
         <label for="pay-note">Catatan untuk dapur</label>
         <textarea id="pay-note" maxlength="200"></textarea>
       </details>
@@ -232,10 +257,13 @@ export async function render(view) {
           [...state.cart].map(([productId, qty]) => ({ productId, qty })),
           {
             cashReceived: parseMoney(cashInput.value),
-            customerName: el.querySelector('#pay-name').value,
+            customerName: state.customerName,
+            tableNo: state.tableNo,
             note: el.querySelector('#pay-note').value,
           });
         state.cart.clear();
+        state.tableNo = '';
+        state.customerName = '';
         await saveDraftNow();
         close();
         showSuccess(res);
@@ -255,7 +283,8 @@ export async function render(view) {
         <div class="success-icon">✓</div>
         <h2>Transaksi tersimpan</h2>
         <div class="queue-no">#${esc(t.queueNo)}</div>
-        <p class="muted small">Pesanan sudah dikirim ke Dapur${t.customerName ? ` · ${esc(t.customerName)}` : ''}</p>
+        ${whoLine(t) ? `<p class="who-line">${esc(whoLine(t))}</p>` : ''}
+        <p class="muted small">Pesanan sudah dikirim ke Dapur</p>
         <table class="simple">
           <tr><td>Total</td><td>${rupiah(t.total)}</td></tr>
           <tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
@@ -275,6 +304,12 @@ export async function render(view) {
   const flush = () => { if (draftTimer) saveDraftNow(); };
   window.addEventListener('pagehide', flush);
   return () => { flush(); window.removeEventListener('pagehide', flush); };
+}
+
+/** "Meja 5 · Bu Rina" */
+export function whoLine({ tableNo, customerName }) {
+  return [tableNo && String(tableNo).trim() ? `Meja ${String(tableNo).trim()}` : '', String(customerName || '').trim()]
+    .filter(Boolean).join(' · ');
 }
 
 /** Saran uang tunai: uang pas lalu pecahan umum di atas total. */
