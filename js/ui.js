@@ -43,6 +43,44 @@ export function formatDateTime(iso) {
   });
 }
 
+const rpFmt = new Intl.NumberFormat('id-ID');
+export function rupiah(n) {
+  return 'Rp' + rpFmt.format(Math.round(Number(n) || 0));
+}
+
+/** "Rp 25.000" / "25000" / "25.000" → 25000 */
+export function parseMoney(s) {
+  const digits = String(s ?? '').replace(/\D/g, '');
+  return digits ? Number(digits) : 0;
+}
+
+/**
+ * Modal sederhana yang ramah sentuh.
+ * @returns {{el:HTMLElement, close:Function}}
+ */
+export function openModal(html, { onClose, dismissible = true, wide = false } = {}) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `<div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.appendChild(backdrop);
+  document.body.classList.add('modal-open');
+  const el = backdrop.firstElementChild;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    backdrop.remove();
+    if (!document.querySelector('.modal-backdrop')) document.body.classList.remove('modal-open');
+    document.removeEventListener('keydown', onKey);
+    onClose && onClose();
+  };
+  const onKey = (e) => { if (e.key === 'Escape' && dismissible) close(); };
+  document.addEventListener('keydown', onKey);
+  if (dismissible) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  el.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
+  return { el, close };
+}
+
 export function daysSince(iso) {
   if (!iso) return Infinity;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);

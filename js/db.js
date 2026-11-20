@@ -101,7 +101,10 @@ function promisify(request) {
 /**
  * Jalankan beberapa operasi dalam SATU transaksi atomik.
  * Jika ada yang gagal, semua dibatalkan (tidak ada data setengah tersimpan).
- *   await withTx(['transactions','transactionItems'], 'readwrite', (s) => { s.transactions.put(...); ... })
+ *   await withTx(['transactions','transactionItems'], 'readwrite', (s, ctx) => { s.transactions.put(...); ... })
+ *
+ * ctx.fail(err)   — batalkan transaksi dengan pesan kesalahan sendiri.
+ * ctx.result = x  — nilai yang dikembalikan setelah transaksi BERHASIL disimpan.
  */
 export async function withTx(storeNames, mode, work) {
   const db = await openDB();
@@ -109,17 +112,44 @@ export async function withTx(storeNames, mode, work) {
     const tx = db.transaction(storeNames, mode);
     const stores = {};
     for (const name of storeNames) stores[name] = tx.objectStore(name);
-    let result;
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error || new Error('Transaksi database dibatalkan'));
+    let failure = null;
+    const ctx = {
+      tx,
+      result: undefined,
+      fail(err) {
+        if (!failure) failure = err instanceof Error ? err : new Error(String(err));
+        try { tx.abort(); } catch (_) { /* sudah selesai */ }
+      },
+    };
+    tx.oncomplete = () => resolve(ctx.result);
+    tx.onerror = () => reject(failure || tx.error);
+    tx.onabort = () => reject(failure || tx.error || new Error('Transaksi database dibatalkan'));
     try {
-      result = work(stores, tx);
+      const r = work(stores, ctx);
+      if (r !== undefined && ctx.result === undefined) ctx.result = r;
     } catch (err) {
-      try { tx.abort(); } catch (_) { /* sudah selesai */ }
-      reject(err);
+      ctx.fail(err);
     }
   });
+}
+
+/** Ambil beberapa key sekaligus di dalam transaksi, lalu panggil done(hasil[]). */
+export function getMany(store, keys, done) {
+  const out = new Array(keys.length);
+  let left = keys.length;
+  if (!left) { done(out); return; }
+  keys.forEach((k, i) => {
+    store.get(k).onsuccess = (e) => {
+      out[i] = e.target.result;
+      if (--left === 0) done(out);
+    };
+  });
+}
+
+/** Tanggal lokal (WIB perangkat) dalam format YYYY-MM-DD. */
+export function localDateKey(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export async function getAll(store) {

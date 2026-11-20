@@ -3,14 +3,16 @@ import { requestPersistence, isStandalone, isIOS } from './storage.js';
 import { banner, removeBanner, toast, esc, daysSince } from './ui.js';
 import * as placeholder from './pages/placeholder.js';
 import * as pengaturan from './pages/pengaturan.js';
+import * as kasir from './pages/kasir.js';
+import * as stok from './pages/stok.js';
 
 // Semua halaman di-import statis agar ikut tersimpan oleh Service Worker.
 const ROUTES = {
-  kasir: placeholder.make('Kasir', '🧾', 'Katalog produk, keranjang, pembayaran tunai, dan penyimpanan transaksi.'),
+  kasir,
   dapur: placeholder.make('Dapur', '🍳', 'Pesanan masuk dari kasir dengan status menunggu, diproses, dan selesai.'),
   antrean: placeholder.make('Antrean', '🔢', 'Daftar pesanan aktif, nomor pesanan, dan riwayat.'),
   laporan: placeholder.make('Laporan', '📊', 'Omzet harian dan bulanan, produk terlaris, dan keuntungan.'),
-  stok: placeholder.make('Stok', '📦', 'Produk, kategori, harga jual dan modal, serta pergerakan stok.'),
+  stok,
   pengaturan,
 };
 const DEFAULT_ROUTE = 'kasir';
