@@ -3,6 +3,7 @@ import { saveBackup, readBackupFile, restoreData } from '../backup.js';
 import { isStandalone, isIOS, isPersisted, requestPersistence, estimate, formatBytes, getSWStatus } from '../storage.js';
 import { APP_VERSION } from '../version.js';
 import { esc, toast, formatDateTime, daysSince, removeBanner } from '../ui.js';
+import { getReceiptSettings, previewSample } from '../services/receipt.js';
 
 const STORE_LABELS = {
   products: 'Produk', categories: 'Kategori', transactions: 'Transaksi',
@@ -52,11 +53,61 @@ export async function render(view) {
       </section>
 
       <section class="card">
+        <h2>Struk</h2>
+        <form id="form-receipt" autocomplete="off">
+          <label for="r-footer">Catatan di bawah struk</label>
+          <input id="r-footer" type="text" maxlength="80" placeholder="mis. Terima kasih atas kunjungan Anda">
+          <label>Lebar kertas</label>
+          <div class="seg" id="r-width">
+            <button type="button" data-w="58">58 mm</button>
+            <button type="button" data-w="80">80 mm</button>
+          </div>
+          <label class="toggle" for="r-logo">
+            <span class="toggle-text"><span class="toggle-title">Tampilkan logo</span>
+              <span class="toggle-sub">Logo CT Catering di bagian atas struk</span></span>
+            <input type="checkbox" class="switch" id="r-logo">
+          </label>
+          <p class="small muted" style="margin:12px 0 0">Nama usaha, alamat, dan telepon diambil dari Identitas Usaha.</p>
+          <div class="btn-row">
+            <button class="btn" type="submit">Simpan</button>
+            <button class="btn secondary" type="button" id="r-preview">Lihat contoh struk</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
         <h2>Isi Database</h2>
         <table class="simple" id="db-counts"></table>
         <p class="small muted" style="margin-bottom:0">Versi aplikasi ${esc(APP_VERSION)} · skema data v${DB_VERSION}</p>
       </section>
     </div>`;
+
+  // ---- Struk ----
+  const rs = await getReceiptSettings();
+  const rForm = view.querySelector('#form-receipt');
+  let rWidth = rs.width;
+  rForm.querySelector('#r-footer').value = rs.footer;
+  rForm.querySelector('#r-logo').checked = rs.showLogo;
+  const drawWidth = () => rForm.querySelectorAll('#r-width button').forEach((b) => b.classList.toggle('active', Number(b.dataset.w) === rWidth));
+  drawWidth();
+  rForm.querySelector('#r-width').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-w]');
+    if (b) { rWidth = Number(b.dataset.w); drawWidth(); }
+  });
+  const saveReceipt = async () => {
+    await setSetting('receiptFooter', rForm.querySelector('#r-footer').value.trim());
+    await setSetting('receiptShowLogo', rForm.querySelector('#r-logo').checked);
+    await setSetting('receiptWidth', rWidth);
+  };
+  rForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await saveReceipt(); toast('Pengaturan struk tersimpan.'); }
+    catch (err) { toast('Gagal menyimpan: ' + err.message, { error: true }); }
+  });
+  rForm.querySelector('#r-preview').addEventListener('click', async () => {
+    try { await saveReceipt(); await previewSample(); }
+    catch (err) { toast(err.message, { error: true }); }
+  });
 
   // ---- Identitas ----
   const form = view.querySelector('#form-identity');

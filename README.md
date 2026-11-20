@@ -4,6 +4,16 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.8.0 — Struk & tagihan
+
+- **Tagihan** (sebelum bayar) dari rincian pesanan di Antrean; **Struk** setelah bayar (layar Lunas), dari *Lunas hari ini*, dan dari rincian di Laporan.
+- Isi: logo (opsional), nama usaha, alamat, telepon, nomor pesanan, tanggal, meja, nama, rincian menu + catatan, total, tunai, kembali, jumlah porsi, catatan bawah.
+- **Cetak** lewat dialog cetak perangkat (AirPrint di iPad); struk selebar 58/80 mm di kertas apa pun.
+- **Bagikan gambar**: PNG dibuat di perangkat (canvas) untuk WhatsApp/AirDrop/Files — tanpa internet.
+- Pengaturan → Struk: catatan bawah, lebar kertas 58/80 mm, tampilkan logo, lihat contoh.
+- Perbaikan: urutan menu di rincian sesuai urutan pesanan (`seq`); Esc hanya menutup jendela teratas.
+- Printer thermal Bluetooth belum didukung (Safari iPad tidak punya Web Bluetooth).
+
 ### v0.7.1 — Logo CT Catering & sunting stok
 
 - Logo CT Catering di header dan sebagai ikon aplikasi (Layar Utama iPad, 192/512, maskable). Sumber: `icons/` (dibuat dari logo asli, dikompres).

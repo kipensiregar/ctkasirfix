@@ -4,6 +4,7 @@ import { buildReport, buildCsv, presetRange, parseDateKey, daysBetween } from '.
 import { getTransactionDetail, whoLine } from '../services/sales.js';
 import { localDateKey } from '../db.js';
 import { esc, rupiah, toast, openModal, shareOrDownload } from '../ui.js';
+import { openReceipt } from '../services/receipt.js';
 
 const PRESETS = [
   ['hariini', 'Hari ini'], ['kemarin', 'Kemarin'], ['7hari', '7 hari'],
@@ -285,7 +286,7 @@ async function showDetail(id) {
   const d = await getTransactionDetail(id);
   if (!d) return;
   const t = d.transaction;
-  openModal(`
+  const { el } = openModal(`
     <div class="modal-head">
       <div><h2>${esc(whoLine(t) || 'Tanpa nama')}</h2>
         <div class="small muted">#${esc(t.queueNo)} · ${parseDateKey(t.paidDateKey || t.dateKey).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })} · lunas ${time(t.paidAt || t.createdAt)}</div></div>
@@ -300,5 +301,7 @@ async function showDetail(id) {
       <tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
       <tr><td>Kembalian</td><td>${rupiah(t.change)}</td></tr>
       ${(t.cancellations || []).length ? `<tr><td>Dibatalkan</td><td>${t.cancellations.map((c) => `${c.qty}× ${esc(c.name)}`).join(', ')}</td></tr>` : ''}
-    </table>`, { wide: true });
+    </table>
+    <div class="btn-row"><button type="button" class="btn secondary" id="d-receipt">Lihat struk</button></div>`, { wide: true });
+  el.querySelector('#d-receipt').addEventListener('click', () => openReceipt(t.id));
 }

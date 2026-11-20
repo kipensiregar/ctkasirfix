@@ -6,7 +6,7 @@
  * SETIAP RILIS: naikkan CACHE_VERSION dan pastikan semua file ada di ASSETS.
  * Service Worker TIDAK pernah menyentuh IndexedDB, jadi update tidak merusak data.
  */
-const CACHE_VERSION = 'v0.7.1';
+const CACHE_VERSION = 'v0.8.0';
 const CACHE_NAME = `ct-pos-${CACHE_VERSION}`;
 
 const ASSETS = [
@@ -31,6 +31,7 @@ const ASSETS = [
   './js/services/sales.js',
   './js/services/stock.js',
   './js/services/reports.js',
+  './js/services/receipt.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

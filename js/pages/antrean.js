@@ -4,6 +4,7 @@ import {
   listOpenTransactions, listPaidToday, getTransactionDetail, kitchenSummary, whoLine,
 } from '../services/sales.js';
 import { openPayment } from './payment.js';
+import { openReceipt } from '../services/receipt.js';
 import { esc, rupiah, openModal } from '../ui.js';
 
 const time = (iso) => new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -85,10 +86,13 @@ export async function render(view) {
       <div class="cart-row total"><span>Total</span><span>${rupiah(t.total)}</span></div>
       ${!isOpen ? `<table class="simple"><tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
         <tr><td>Kembalian</td><td>${rupiah(t.change)}</td></tr></table>` : ''}
-      ${isOpen ? `<div class="btn-row two">
-        <a class="btn secondary" href="#/kasir?tambah=${encodeURIComponent(t.id)}" id="d-fix">Koreksi pesanan</a>
+      ${isOpen ? `<div class="btn-row three">
+        <a class="btn secondary" href="#/kasir?tambah=${encodeURIComponent(t.id)}" id="d-fix">Koreksi</a>
+        <button type="button" class="btn secondary" id="d-bill">Tagihan</button>
         <button type="button" class="btn" id="d-pay">Bayar</button>
-      </div>` : ''}`, { wide: true });
+      </div>` : `<div class="btn-row"><button type="button" class="btn secondary" id="d-receipt">Lihat struk</button></div>`}`, { wide: true });
+    el.querySelector('#d-bill')?.addEventListener('click', () => openReceipt(t.id));
+    el.querySelector('#d-receipt')?.addEventListener('click', () => openReceipt(t.id));
     el.querySelector('#d-fix')?.addEventListener('click', () => close());
     el.querySelector('#d-pay')?.addEventListener('click', () => {
       close();

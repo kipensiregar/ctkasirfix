@@ -1,2 +1,2 @@
 // Naikkan juga CACHE_VERSION di sw.js setiap merilis perubahan aset.
-export const APP_VERSION = '0.7.1';
+export const APP_VERSION = '0.8.0';

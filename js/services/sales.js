@@ -117,7 +117,7 @@ function writeRound(s, trx, lines, products, { isNew, createdAt, dateKey, note =
       name: p.name, categoryId: p.categoryId ?? null,
       price: p.price, cost: p.cost ?? null, qty: l.qty,
       subtotal: p.price * l.qty, note: l.note || '',
-      round: rounds + 1, createdAt,
+      round: rounds + 1, seq: i, createdAt,
     };
     s.transactionItems.put(item);
     if (p.trackStock) {
@@ -394,7 +394,7 @@ export async function getTransactionDetail(id) {
   for (const o of myOrders) for (const it of o.items || []) if (it.itemId) served.set(it.itemId, !!it.served || o.status === 'selesai');
   const myItems = items
     .filter((it) => it.qty > 0)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || (a.seq ?? 0) - (b.seq ?? 0))
     .map((it) => ({ ...it, served: served.get(it.id) ?? myOrders.some((o) => o.status === 'selesai') }));
   return { transaction: trx, items: myItems, orders: myOrders };
 }

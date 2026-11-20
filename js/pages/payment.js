@@ -1,5 +1,6 @@
 // Modal pembayaran tunai — dipakai dari Antrean.
 import { payTransaction, whoLine } from '../services/sales.js';
+import { openReceipt } from '../services/receipt.js';
 import { esc, toast, rupiah, parseMoney, openModal } from '../ui.js';
 
 /** Saran uang tunai: uang pas lalu pecahan umum di atas total. */
@@ -82,7 +83,11 @@ function showPaid(t, onPaid) {
         <tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
       </table>
       <div class="pay-change big"><span>Kembalian</span><b>${rupiah(t.change)}</b></div>
-      <button type="button" class="btn btn-pay" id="btn-done">Selesai</button>
+      <div class="btn-row two">
+        <button type="button" class="btn secondary" id="btn-receipt">Struk</button>
+        <button type="button" class="btn" id="btn-done">Selesai</button>
+      </div>
     </div>`, { dismissible: false });
   el.querySelector('#btn-done').addEventListener('click', () => { close(); onPaid && onPaid(t); });
+  el.querySelector('#btn-receipt').addEventListener('click', () => openReceipt(t.id));
 }

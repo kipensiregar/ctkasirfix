@@ -81,7 +81,10 @@ export function openModal(html, { onClose, dismissible = true, wide = false } = 
     document.removeEventListener('keydown', onKey);
     onClose && onClose();
   };
-  const onKey = (e) => { if (e.key === 'Escape' && dismissible) close(); };
+  // Esc hanya menutup jendela paling atas.
+  const onKey = (e) => {
+    if (e.key === 'Escape' && dismissible && backdrop === [...document.querySelectorAll('.modal-backdrop')].pop()) close();
+  };
   document.addEventListener('keydown', onKey);
   if (dismissible) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
   el.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
