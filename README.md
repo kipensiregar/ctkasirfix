@@ -4,6 +4,14 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.4.0 — Modul Stok
+
+- Tab **Produk**: ringkasan jumlah produk, stok menipis (≤5), stok habis (bisa diketuk sebagai filter); tombol **± Stok** per produk.
+- **± Stok**: Masuk, Keluar (alasan cepat: Rusak, Basi, Dipakai sendiri, Hilang), Penyesuaian (isi jumlah stok fisik, selisih dihitung otomatis). Pratinjau stok akhir sebelum disimpan; stok tidak bisa minus.
+- Stok produk yang sudah dihitung tidak lagi diubah lewat form edit, agar setiap perubahan tercatat di riwayat.
+- Tab **Riwayat Stok**: semua pergerakan (stok awal, masuk, keluar, penyesuaian, penjualan) dengan filter produk & jenis.
+- Tab **Kategori**: tambah, ganti nama, hapus (produk di dalamnya menjadi tanpa kategori).
+
 ### v0.3.0 — Alur rumah makan: Kasir → Dapur → Antrean → Bayar
 
 - **Kasir**: pilih menu, catatan per item, No. meja / nama (wajib salah satu) → **Kirim ke Dapur**. Belum ada pembayaran.

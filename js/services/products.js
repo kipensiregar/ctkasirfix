@@ -27,17 +27,17 @@ function toInt(v, label, { allowNull = false } = {}) {
 /**
  * Simpan produk baru / perubahan produk.
  * input: { id?, name, categoryName, price, cost, trackStock, stock }
- * Perubahan stok lewat form dicatat sebagai pergerakan stok "adjust".
+ * Stok awal hanya diisi saat produk baru / saat "Hitung stok" baru diaktifkan.
+ * Perubahan stok berikutnya lewat recordStock() di services/stock.js.
  */
 export function saveProduct(input) {
   const name = String(input.name || '').trim();
   if (!name) return Promise.reject(new Error('Nama produk wajib diisi.'));
   if (name.length > 80) return Promise.reject(new Error('Nama produk terlalu panjang.'));
-  let price, cost, stock;
+  let price, cost;
   try {
     price = toInt(input.price, 'Harga jual');
     cost = toInt(input.cost, 'Harga modal', { allowNull: true });
-    stock = input.trackStock ? toInt(input.stock, 'Stok') : null;
   } catch (err) {
     return Promise.reject(err);
   }
@@ -48,19 +48,22 @@ export function saveProduct(input) {
     const finish = (categoryId) => {
       const writeProduct = (existing) => {
         if (input.id && (!existing || existing.deleted)) { ctx.fail(new Error('Produk tidak ditemukan.')); return; }
+        const keepStock = !!(existing && existing.trackStock && input.trackStock);
+        let stock = existing?.stock ?? null;
+        if (input.trackStock && !keepStock) {
+          try { stock = toInt(input.stock, 'Stok awal'); } catch (err) { ctx.fail(err); return; }
+        }
         const product = {
           ...(existing || { id: uid(), createdAt: now }),
           name, categoryId, price, cost,
           trackStock: !!input.trackStock,
-          stock: input.trackStock ? stock : (existing?.stock ?? null),
+          stock,
           updatedAt: now,
         };
-        const before = existing && existing.trackStock ? (existing.stock ?? 0) : 0;
-        if (product.trackStock && stock !== before) {
+        if (input.trackStock && !keepStock) {
           s.stockMovements.put({
             id: uid(), productId: product.id, productName: name,
-            type: existing ? 'adjust' : 'initial',
-            qty: stock - before, stockAfter: stock, note: 'Diubah dari form produk',
+            type: 'initial', qty: stock, stockAfter: stock, note: 'Stok awal',
             createdAt: now,
           });
         }
