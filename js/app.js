@@ -5,12 +5,15 @@ import * as placeholder from './pages/placeholder.js';
 import * as pengaturan from './pages/pengaturan.js';
 import * as kasir from './pages/kasir.js';
 import * as stok from './pages/stok.js';
+import * as dapur from './pages/dapur.js';
+import * as antrean from './pages/antrean.js';
+import { listKitchenOrders, listOpenTransactions } from './services/sales.js';
 
 // Semua halaman di-import statis agar ikut tersimpan oleh Service Worker.
 const ROUTES = {
   kasir,
-  dapur: placeholder.make('Dapur', '🍳', 'Pesanan masuk dari kasir dengan status menunggu, diproses, dan selesai.'),
-  antrean: placeholder.make('Antrean', '🔢', 'Daftar pesanan aktif, nomor pesanan, dan riwayat.'),
+  dapur,
+  antrean,
   laporan: placeholder.make('Laporan', '📊', 'Omzet harian dan bulanan, produk terlaris, dan keuntungan.'),
   stok,
   pengaturan,
@@ -33,7 +36,26 @@ async function render() {
     view.innerHTML = `<div class="card"><h2>Terjadi kesalahan</h2><p class="muted">${esc(err.message || err)}</p></div>`;
   }
   view.focus({ preventScroll: true });
+  updateBadges();
 }
+
+// ---------- Jumlah pesanan di menu Dapur & Antrean ----------
+async function updateBadges() {
+  try {
+    const [k, o] = await Promise.all([listKitchenOrders(), listOpenTransactions()]);
+    setBadge('dapur', k.length);
+    setBadge('antrean', o.length);
+  } catch (_) { /* abaikan */ }
+}
+function setBadge(route, n) {
+  const a = document.querySelector(`#tabs a[data-route="${route}"]`);
+  if (!a) return;
+  let b = a.querySelector('.nav-badge');
+  if (!n) { b?.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'nav-badge'; a.appendChild(b); }
+  b.textContent = n;
+}
+window.addEventListener('ct:data-changed', updateBadges);
 
 // ---------- Status jaringan (informasi saja — aplikasi tidak membutuhkannya) ----------
 function updateNet() {

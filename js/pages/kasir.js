@@ -1,33 +1,49 @@
-import { getSetting, setSetting } from '../db.js';
+// Kasir: mencatat pesanan lalu mengirimnya ke dapur. Pembayaran dilakukan di Antrean.
+// Mode tambahan (Koreksi): #/kasir?tambah=<transactionId>
+import { getSetting, setSetting, get } from '../db.js';
 import { listProducts, listCategories } from '../services/products.js';
-import { checkout } from '../services/sales.js';
-import { esc, toast, rupiah, parseMoney, openModal } from '../ui.js';
+import { sendToKitchen, listOpenTransactions, whoLine } from '../services/sales.js';
+import { esc, toast, rupiah, openModal } from '../ui.js';
 
 const DRAFT_KEY = 'cartDraft';
+const DRAFT_ADD_KEY = 'cartDraftAdd';
 
 export async function render(view) {
-  const [products, categories, draft] = await Promise.all([
-    listProducts(), listCategories(), getSetting(DRAFT_KEY, null),
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const addToId = params.get('tambah');
+
+  // ---- Mode tambahan: pastikan pesanan masih terbuka ----
+  let target = null;
+  if (addToId) {
+    target = await get('transactions', addToId);
+    if (!target || target.status !== 'open') {
+      toast('Pesanan itu sudah dibayar atau tidak ada.', { error: true });
+      location.hash = '#/antrean';
+      return;
+    }
+  }
+
+  const draftKey = target ? DRAFT_ADD_KEY : DRAFT_KEY;
+  const [products, categories, rawDraft] = await Promise.all([
+    listProducts(), listCategories(), getSetting(draftKey, null),
   ]);
+  // Draf tambahan hanya berlaku untuk pesanan yang sama.
+  const draft = target && rawDraft?.transactionId !== target.id ? null : rawDraft;
+
   const productById = new Map(products.map((p) => [p.id, p]));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const usedCats = categories.filter((c) => products.some((p) => p.categoryId === c.id));
 
   const state = {
-    cart: new Map(), // productId -> qty (urutan sesuai saat ditambahkan)
+    cart: new Map(), // productId -> { qty, note }
     cat: 'all',
     q: '',
-    tableNo: '',
-    customerName: '',
+    tableNo: target ? target.tableNo : String(draft?.tableNo || ''),
+    customerName: target ? target.customerName : String(draft?.customerName || ''),
   };
-  // Pulihkan keranjang yang belum dibayar (mis. setelah refresh / aplikasi tertutup).
-  if (draft) {
-    state.tableNo = String(draft.tableNo || '');
-    state.customerName = String(draft.customerName || '');
-  }
-  if (draft && Array.isArray(draft.items)) {
-    for (const { productId, qty } of draft.items) {
-      if (productById.has(productId) && Number.isInteger(qty) && qty > 0) state.cart.set(productId, qty);
+  for (const it of draft?.items || []) {
+    if (productById.has(it.productId) && Number.isInteger(it.qty) && it.qty > 0) {
+      state.cart.set(it.productId, { qty: it.qty, note: String(it.note || '') });
     }
   }
 
@@ -52,7 +68,15 @@ export async function render(view) {
         </div>
         <div class="product-grid" id="pos-grid"></div>
       </section>
-      <aside class="pos-cart card">
+      <aside class="pos-cart card${target ? ' add-mode' : ''}">
+        ${target ? `
+        <div class="add-banner">
+          <div>
+            <div class="small">Tambahan untuk</div>
+            <div class="add-who">${esc(whoLine(target))} <span class="muted small">#${esc(target.queueNo)}</span></div>
+          </div>
+          <a class="btn secondary" href="#/antrean" id="add-cancel">Batal</a>
+        </div>` : `
         <div class="cart-head">
           <h2>Pesanan</h2>
           <button type="button" class="link-btn" id="cart-clear">Kosongkan</button>
@@ -66,12 +90,13 @@ export async function render(view) {
             <label for="cart-name">Nama pemesan</label>
             <input id="cart-name" type="text" maxlength="60" autocomplete="off" placeholder="mis. Bu Rina">
           </div>
-        </div>
+        </div>`}
         <div class="cart-items" id="cart-items"></div>
         <div class="cart-foot">
-          <div class="cart-row"><span class="muted">Jumlah item</span><span id="cart-count">0</span></div>
-          <div class="cart-row total"><span>Total</span><span id="cart-total">Rp0</span></div>
-          <button type="button" class="btn btn-pay" id="btn-pay">Bayar</button>
+          ${target ? `<div class="cart-row"><span class="muted">Pesanan sebelumnya</span><span>${rupiah(target.total)}</span></div>` : ''}
+          <div class="cart-row"><span class="muted">${target ? 'Tambahan' : 'Jumlah item'}</span><span id="cart-count">0</span></div>
+          <div class="cart-row total"><span>${target ? 'Total baru' : 'Total'}</span><span id="cart-total">Rp0</span></div>
+          <button type="button" class="btn btn-pay" id="btn-send">${target ? 'Kirim Tambahan ke Dapur' : 'Kirim ke Dapur'}</button>
         </div>
       </aside>
     </div>`;
@@ -79,32 +104,35 @@ export async function render(view) {
   const grid = view.querySelector('#pos-grid');
   const cartEl = view.querySelector('#cart-items');
 
-  // ---------- Draf ----------
+  // ---------- Draf (keranjang tahan refresh) ----------
   let draftTimer = null;
   const saveDraftNow = () => {
     clearTimeout(draftTimer);
     draftTimer = null;
-    const items = [...state.cart].map(([productId, qty]) => ({ productId, qty }));
-    const hasWho = state.tableNo.trim() || state.customerName.trim();
-    return setSetting(DRAFT_KEY, items.length || hasWho
-      ? { items, tableNo: state.tableNo, customerName: state.customerName } : null).catch(() => {});
+    const items = [...state.cart].map(([productId, l]) => ({ productId, qty: l.qty, note: l.note }));
+    let value = null;
+    if (target) {
+      if (items.length) value = { transactionId: target.id, items };
+    } else if (items.length || state.tableNo.trim() || state.customerName.trim()) {
+      value = { items, tableNo: state.tableNo, customerName: state.customerName };
+    }
+    return setSetting(draftKey, value).catch(() => {});
   };
   const saveDraft = () => {
     clearTimeout(draftTimer);
     draftTimer = setTimeout(saveDraftNow, 250);
   };
 
-  // ---------- Perhitungan ----------
   const totals = () => {
     let total = 0, count = 0;
-    for (const [id, qty] of state.cart) {
+    for (const [id, l] of state.cart) {
       const p = productById.get(id);
-      if (p) { total += p.price * qty; count += qty; }
+      if (p) { total += p.price * l.qty; count += l.qty; }
     }
     return { total, count };
   };
 
-  // ---------- Render katalog ----------
+  // ---------- Katalog ----------
   const renderGrid = () => {
     const q = state.q.trim().toLowerCase();
     const list = products.filter((p) =>
@@ -116,7 +144,7 @@ export async function render(view) {
       return;
     }
     grid.innerHTML = list.map((p) => {
-      const inCart = state.cart.get(p.id) || 0;
+      const inCart = state.cart.get(p.id)?.qty || 0;
       const left = p.trackStock ? (p.stock ?? 0) - inCart : null;
       const out = p.trackStock && left <= 0;
       const cat = p.categoryId ? catById.get(p.categoryId)?.name : '';
@@ -132,12 +160,12 @@ export async function render(view) {
     }).join('');
   };
 
-  // ---------- Render keranjang ----------
+  // ---------- Keranjang ----------
   const renderCart = () => {
     if (!state.cart.size) {
       cartEl.innerHTML = `<p class="muted cart-empty">Ketuk produk untuk menambahkan ke pesanan.</p>`;
     } else {
-      cartEl.innerHTML = [...state.cart].map(([id, qty]) => {
+      cartEl.innerHTML = [...state.cart].map(([id, l]) => {
         const p = productById.get(id);
         return `
           <div class="cart-item">
@@ -145,20 +173,23 @@ export async function render(view) {
               <div class="ci-name">${esc(p.name)}</div>
               <div class="ci-price muted small">${rupiah(p.price)}</div>
             </div>
+            <div class="ci-sub">${rupiah(p.price * l.qty)}</div>
             <div class="stepper">
               <button type="button" data-dec="${esc(id)}" aria-label="Kurangi">−</button>
-              <span>${qty}</span>
+              <span>${l.qty}</span>
               <button type="button" data-inc="${esc(id)}" aria-label="Tambah">+</button>
             </div>
-            <div class="ci-sub">${rupiah(p.price * qty)}</div>
+            <input type="text" class="ci-note" data-note="${esc(id)}" maxlength="120"
+              placeholder="Catatan… (mis. pedas, tanpa bawang)" value="${esc(l.note)}" autocomplete="off">
           </div>`;
       }).join('');
     }
     const { total, count } = totals();
-    view.querySelector('#cart-count').textContent = count;
-    view.querySelector('#cart-total').textContent = rupiah(total);
-    view.querySelector('#btn-pay').disabled = count === 0;
-    view.querySelector('#cart-clear').hidden = count === 0;
+    view.querySelector('#cart-count').textContent = target ? rupiah(total) : count;
+    view.querySelector('#cart-total').textContent = rupiah(target ? target.total + total : total);
+    view.querySelector('#btn-send').disabled = count === 0;
+    const clear = view.querySelector('#cart-clear');
+    if (clear) clear.hidden = count === 0 && !state.tableNo && !state.customerName;
   };
 
   const refresh = () => { renderGrid(); renderCart(); saveDraft(); };
@@ -166,13 +197,14 @@ export async function render(view) {
   const add = (id, delta) => {
     const p = productById.get(id);
     if (!p) return;
-    const next = (state.cart.get(id) || 0) + delta;
+    const line = state.cart.get(id) || { qty: 0, note: '' };
+    const next = line.qty + delta;
     if (delta > 0 && p.trackStock && next > (p.stock ?? 0)) {
       toast(`Stok ${p.name} tidak cukup (sisa ${p.stock ?? 0}).`, { error: true });
       return;
     }
     if (next <= 0) state.cart.delete(id);
-    else state.cart.set(id, next);
+    else state.cart.set(id, { ...line, qty: next });
     refresh();
   };
 
@@ -187,137 +219,104 @@ export async function render(view) {
     if (inc) add(inc.dataset.inc, 1);
     if (dec) add(dec.dataset.dec, -1);
   });
+  cartEl.addEventListener('input', (e) => {
+    const n = e.target.closest('[data-note]');
+    if (!n) return;
+    const line = state.cart.get(n.dataset.note);
+    if (line) { line.note = n.value; saveDraft(); }
+  });
   view.querySelector('#pos-cats').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cat]');
     if (b) { state.cat = b.dataset.cat; renderGrid(); }
   });
   view.querySelector('#pos-search').addEventListener('input', (e) => { state.q = e.target.value; renderGrid(); });
-  view.querySelector('#cart-clear').addEventListener('click', () => {
-    if (!state.cart.size || !confirm('Kosongkan semua item di pesanan ini?')) return;
+
+  const tableInput = view.querySelector('#cart-table');
+  const nameInput = view.querySelector('#cart-name');
+  if (tableInput) {
+    tableInput.value = state.tableNo;
+    nameInput.value = state.customerName;
+    tableInput.addEventListener('input', () => { state.tableNo = tableInput.value; saveDraft(); renderCart(); });
+    nameInput.addEventListener('input', () => { state.customerName = nameInput.value; saveDraft(); renderCart(); });
+  }
+
+  view.querySelector('#cart-clear')?.addEventListener('click', () => {
+    if (!confirm('Kosongkan pesanan ini?')) return;
     state.cart.clear();
     state.tableNo = state.customerName = '';
     tableInput.value = nameInput.value = '';
     refresh();
   });
-  view.querySelector('#btn-pay').addEventListener('click', () => openPayment());
-  const tableInput = view.querySelector('#cart-table');
-  const nameInput = view.querySelector('#cart-name');
-  tableInput.value = state.tableNo;
-  nameInput.value = state.customerName;
-  tableInput.addEventListener('input', () => { state.tableNo = tableInput.value; saveDraft(); });
-  nameInput.addEventListener('input', () => { state.customerName = nameInput.value; saveDraft(); });
+  view.querySelector('#add-cancel')?.addEventListener('click', () => {
+    state.cart.clear();
+    saveDraftNow();
+  });
 
-  // ---------- Pembayaran ----------
-  function openPayment() {
-    const { total, count } = totals();
-    if (!count) return;
-    const suggestions = cashSuggestions(total);
-    const { el, close } = openModal(`
-      <div class="modal-head"><h2>Pembayaran Tunai</h2><button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button></div>
-      ${whoLine(state) ? `<p class="who-line">${esc(whoLine(state))}</p>` : ''}
-      <div class="pay-total"><span class="muted">Total</span><b>${rupiah(total)}</b></div>
-      <label for="pay-cash">Uang diterima</label>
-      <input id="pay-cash" type="text" inputmode="numeric" autocomplete="off" class="money-input" placeholder="0">
-      <div class="quick-cash">
-        ${suggestions.map((v, i) => `<button type="button" class="chip" data-cash="${v}">${i === 0 ? 'Uang pas' : rupiah(v)}</button>`).join('')}
-      </div>
-      <div class="pay-change"><span>Kembalian</span><b id="pay-change">—</b></div>
-      <details class="pay-more">
-        <summary>Catatan untuk dapur (opsional)</summary>
-        <label for="pay-note">Catatan untuk dapur</label>
-        <textarea id="pay-note" maxlength="200"></textarea>
-      </details>
-      <button type="button" class="btn btn-pay" id="pay-submit" disabled>Simpan Transaksi</button>`);
+  // ---------- Kirim ke dapur ----------
+  const sendBtn = view.querySelector('#btn-send');
+  let sending = false;
 
-    const cashInput = el.querySelector('#pay-cash');
-    const submit = el.querySelector('#pay-submit');
-    const changeEl = el.querySelector('#pay-change');
-    const update = () => {
-      const cash = parseMoney(cashInput.value);
-      cashInput.value = cash ? new Intl.NumberFormat('id-ID').format(cash) : '';
-      const ok = cash >= total;
-      changeEl.textContent = cash ? (ok ? rupiah(cash - total) : `Kurang ${rupiah(total - cash)}`) : '—';
-      changeEl.classList.toggle('short', cash > 0 && !ok);
-      submit.disabled = !ok;
-    };
-    cashInput.addEventListener('input', update);
-    el.querySelector('.quick-cash').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-cash]');
-      if (b) { cashInput.value = b.dataset.cash; update(); }
-    });
-
-    let saving = false;
-    submit.addEventListener('click', async () => {
-      if (saving) return;
-      saving = true;
-      submit.disabled = true;
-      submit.textContent = 'Menyimpan…';
-      try {
-        const res = await checkout(
-          [...state.cart].map(([productId, qty]) => ({ productId, qty })),
-          {
-            cashReceived: parseMoney(cashInput.value),
-            customerName: state.customerName,
-            tableNo: state.tableNo,
-            note: el.querySelector('#pay-note').value,
-          });
-        state.cart.clear();
-        state.tableNo = '';
-        state.customerName = '';
-        await saveDraftNow();
-        close();
-        showSuccess(res);
-      } catch (err) {
-        toast(err.message || 'Transaksi gagal disimpan.', { error: true, ms: 6000 });
-        saving = false;
-        submit.textContent = 'Simpan Transaksi';
-        update();
+  async function doSend(transactionId) {
+    sending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Mengirim…';
+    try {
+      const { transaction: t } = await sendToKitchen(
+        [...state.cart].map(([productId, l]) => ({ productId, qty: l.qty, note: l.note })),
+        { tableNo: state.tableNo, customerName: state.customerName, transactionId });
+      state.cart.clear();
+      if (!target) state.tableNo = state.customerName = '';
+      await saveDraftNow();
+      window.dispatchEvent(new Event('ct:data-changed'));
+      if (target || transactionId) {
+        toast(`Tambahan ${whoLine(t)} dikirim ke dapur.`);
+        location.hash = '#/antrean';
+      } else {
+        toast(`Pesanan #${t.queueNo} · ${whoLine(t)} dikirim ke dapur.`, { ms: 4000 });
+        window.dispatchEvent(new HashChangeEvent('hashchange')); // muat ulang (stok terbaru)
       }
-    });
-    setTimeout(() => { if (!el.contains(document.activeElement)) cashInput.focus(); }, 50);
+    } catch (err) {
+      toast(err.message || 'Gagal mengirim pesanan.', { error: true, ms: 6000 });
+      sending = false;
+      sendBtn.textContent = target ? 'Kirim Tambahan ke Dapur' : 'Kirim ke Dapur';
+      renderCart();
+    }
   }
 
-  function showSuccess({ transaction: t }) {
-    const { el, close } = openModal(`
-      <div class="success">
-        <div class="success-icon">✓</div>
-        <h2>Transaksi tersimpan</h2>
-        <div class="queue-no">#${esc(t.queueNo)}</div>
-        ${whoLine(t) ? `<p class="who-line">${esc(whoLine(t))}</p>` : ''}
-        <p class="muted small">Pesanan sudah dikirim ke Dapur</p>
-        <table class="simple">
-          <tr><td>Total</td><td>${rupiah(t.total)}</td></tr>
-          <tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
-        </table>
-        <div class="pay-change big"><span>Kembalian</span><b>${rupiah(t.change)}</b></div>
-        <button type="button" class="btn btn-pay" id="btn-new">Transaksi Baru</button>
-      </div>`, { dismissible: false });
-    el.querySelector('#btn-new').addEventListener('click', async () => {
-      close();
-      // Muat ulang halaman kasir lewat router (stok terbaru).
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-    });
-  }
+  sendBtn.addEventListener('click', async () => {
+    if (sending || !state.cart.size) return;
+    if (target) { doSend(target.id); return; }
+
+    if (!state.tableNo.trim() && !state.customerName.trim()) {
+      toast('Isi nomor meja atau nama pemesan dulu.', { error: true });
+      tableInput.focus();
+      return;
+    }
+    // Meja yang sama masih punya pesanan belum bayar → tawarkan untuk digabung.
+    const table = state.tableNo.trim();
+    if (table) {
+      const open = (await listOpenTransactions()).filter((t) => (t.tableNo || '').toLowerCase() === table.toLowerCase());
+      if (open.length) {
+        const t = open[open.length - 1];
+        const { el, close } = openModal(`
+          <div class="modal-head"><h2>Meja ${esc(table)} belum bayar</h2>
+            <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+          <p>Meja ini masih punya pesanan <b>#${esc(t.queueNo)}</b>${t.customerName ? ` (${esc(t.customerName)})` : ''}
+             senilai <b>${rupiah(t.total)}</b>.</p>
+          <div class="btn-col">
+            <button type="button" class="btn" id="m-join">Tambahkan ke pesanan #${esc(t.queueNo)}</button>
+            <button type="button" class="btn secondary" id="m-new">Buat pesanan terpisah</button>
+          </div>`);
+        el.querySelector('#m-join').onclick = () => { close(); doSend(t.id); };
+        el.querySelector('#m-new').onclick = () => { close(); doSend(undefined); };
+        return;
+      }
+    }
+    doSend(undefined);
+  });
 
   refresh();
-  // Saat pindah halaman: simpan draf yang masih tertunda.
   const flush = () => { if (draftTimer) saveDraftNow(); };
   window.addEventListener('pagehide', flush);
   return () => { flush(); window.removeEventListener('pagehide', flush); };
-}
-
-/** "Meja 5 · Bu Rina" */
-export function whoLine({ tableNo, customerName }) {
-  return [tableNo && String(tableNo).trim() ? `Meja ${String(tableNo).trim()}` : '', String(customerName || '').trim()]
-    .filter(Boolean).join(' · ');
-}
-
-/** Saran uang tunai: uang pas lalu pecahan umum di atas total. */
-function cashSuggestions(total) {
-  const out = [total];
-  for (const step of [5000, 10000, 20000, 50000, 100000]) {
-    const v = Math.ceil(total / step) * step;
-    if (v > total && !out.includes(v)) out.push(v);
-  }
-  return out.slice(0, 5);
 }

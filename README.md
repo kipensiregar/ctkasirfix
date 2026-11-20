@@ -4,6 +4,15 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.3.0 — Alur rumah makan: Kasir → Dapur → Antrean → Bayar
+
+- **Kasir**: pilih menu, catatan per item, No. meja / nama (wajib salah satu) → **Kirim ke Dapur**. Belum ada pembayaran.
+- Meja yang sama masih belum bayar → ditawarkan *tambahkan ke pesanan itu* atau *pesanan terpisah*.
+- **Dapur**: kartu per pesanan, centang item yang sudah dihidangkan, tombol **Hidangkan** untuk menyelesaikan. Pesanan tambahan muncul sebagai kartu terpisah berlabel *Tambahan*. Waktu tunggu > 15 menit ditandai merah.
+- **Antrean**: daftar *Menunggu Bayar* per meja; ketuk untuk melihat rincian (per ronde, status hidang, catatan) → **Koreksi** (tambah menu) atau **Bayar** (tunai + kembalian). Ada daftar *Lunas hari ini*.
+- Angka di menu Dapur/Antrean = jumlah pesanan aktif.
+- Data: transaksi dibuat berstatus `open` saat dikirim ke dapur, menjadi `paid` saat dibayar (`paidAt`, `paidDateKey`). Stok dikurangi saat dikirim ke dapur. Tidak ada perubahan skema IndexedDB.
+
 ### v0.2.1 — No. meja & nama pemesan
 
 - Kolom No. meja dan Nama pemesan di panel Pesanan (opsional), ikut tersimpan ke transaksi dan pesanan dapur.

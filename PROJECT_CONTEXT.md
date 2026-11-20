@@ -17,3 +17,4 @@ Ringkasan prinsip:
 
 - **2026-11-20 — Tanpa langkah build untuk saat ini.** Vite tidak tersedia di lingkungan pengembangan awal. Aplikasi ditulis sebagai ES module murni (tanpa bundler), langsung jalan di GitHub Pages. Vite dapat ditambahkan nanti tanpa mengubah arsitektur; daftar precache di `sw.js` harus disesuaikan bila nama file menjadi ber-hash.
 - **2026-11-20 — Printer struk ditunda.** Safari iPad tidak mendukung Web Bluetooth; pilihan printer diputuskan nanti.
+- **2026-11-20 — Alur bayar belakangan.** Mengikuti cara kerja rumah makan: Kasir hanya mengirim pesanan ke dapur; pembayaran dilakukan di Antrean. Koreksi = menambah menu ke pesanan meja yang belum bayar. Laporan omzet nantinya memakai transaksi `paid` berdasarkan `paidDateKey`.
