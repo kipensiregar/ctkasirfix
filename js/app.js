@@ -152,6 +152,16 @@ async function applyBrand() {
 }
 window.addEventListener('ct:brand-changed', applyBrand);
 
+// ---------- Catat waktu buka (untuk diagnosa di Pengaturan) ----------
+function recordStartup() {
+  try {
+    const ms = Math.round(performance.now());
+    const list = JSON.parse(localStorage.getItem('ct-startup') || '[]');
+    list.unshift({ ms, standalone: isStandalone(), at: new Date().toISOString() });
+    localStorage.setItem('ct-startup', JSON.stringify(list.slice(0, 5)));
+  } catch (_) { /* abaikan */ }
+}
+
 // ---------- Start ----------
 async function start() {
   updateNet();
@@ -170,6 +180,7 @@ async function start() {
 
   window.addEventListener('hashchange', render);
   await render();
+  recordStartup();
 
   registerSW();
   installHint();

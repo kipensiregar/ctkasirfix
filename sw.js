@@ -6,7 +6,7 @@
  * SETIAP RILIS: naikkan CACHE_VERSION dan pastikan semua file ada di ASSETS.
  * Service Worker TIDAK pernah menyentuh IndexedDB, jadi update tidak merusak data.
  */
-const CACHE_VERSION = 'v0.5.0';
+const CACHE_VERSION = 'v0.5.1';
 const CACHE_NAME = `ct-pos-${CACHE_VERSION}`;
 
 const ASSETS = [
@@ -73,6 +73,10 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Simpan handle cache agar tidak membuka ulang untuk setiap file.
+let cachePromise = null;
+const getCache = () => (cachePromise ||= caches.open(CACHE_NAME));
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -82,7 +86,7 @@ self.addEventListener('fetch', (event) => {
   // Navigasi halaman (termasuk dibuka dari Home Screen): selalu index.html dari cache.
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
-      const cache = await caches.open(CACHE_NAME);
+      const cache = await getCache();
       const cached = await cache.match('./index.html');
       if (cached) return cached;
       try {
@@ -97,8 +101,9 @@ self.addEventListener('fetch', (event) => {
 
   // Aset: cache-first, lalu jaringan (dan simpan) sebagai cadangan.
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(req, { ignoreSearch: true });
+    const cache = await getCache();
+    // Pencocokan persis (cepat). ignoreSearch hanya sebagai cadangan.
+    const cached = (await cache.match(req)) || (url.search && await cache.match(req, { ignoreSearch: true }));
     if (cached) return cached;
     try {
       const res = await fetch(req);

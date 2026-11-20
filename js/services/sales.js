@@ -4,7 +4,7 @@
 //   3. Dapur mencentang item dihidangkan → tiket 'diproses', lalu 'selesai'.
 //   4. Antrean → Bayar                  → transaksi status 'paid'.
 // Setiap langkah adalah SATU transaksi IndexedDB atomik.
-import { withTx, getMany, getAll, get, uid, localDateKey } from '../db.js';
+import { withTx, getMany, getAllByIndex, get, uid, localDateKey } from '../db.js';
 
 const clean = (s, max) => String(s || '').trim().slice(0, max);
 
@@ -210,21 +210,26 @@ export function serveOrder(orderId) {
 // ---------- Baca data ----------
 
 export async function listKitchenOrders() {
-  const all = await getAll('orders');
-  return all
-    .filter((o) => o.status !== 'selesai')
+  // Hanya pesanan aktif (index status), bukan seluruh riwayat.
+  const [waiting, working] = await Promise.all([
+    getAllByIndex('orders', 'status', 'menunggu'),
+    getAllByIndex('orders', 'status', 'diproses'),
+  ]);
+  return [...waiting, ...working]
     .map((o) => ({ ...o, items: (o.items || []).map((it) => ({ served: false, ...it })) }))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function listOpenTransactions() {
-  const all = await getAll('transactions');
-  return all.filter((t) => t.status === 'open').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const all = await getAllByIndex('transactions', 'status', 'open');
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function listPaidToday() {
   const today = localDateKey();
-  const all = await getAll('transactions');
+  // Lunas hari ini = dibuat paling lama beberapa hari lalu; baca lewat index tanggal.
+  const since = new Date(Date.now() - 3 * 86400000).toISOString();
+  const all = await getAllByIndex('transactions', 'createdAt', IDBKeyRange.lowerBound(since));
   return all
     .filter((t) => t.status === 'paid' && (t.paidDateKey || t.dateKey) === today)
     .sort((a, b) => (b.paidAt || b.createdAt).localeCompare(a.paidAt || a.createdAt));
@@ -234,12 +239,13 @@ export async function listPaidToday() {
 export async function getTransactionDetail(id) {
   const trx = await get('transactions', id);
   if (!trx) return null;
-  const [items, orders] = await Promise.all([getAll('transactionItems'), getAll('orders')]);
-  const myOrders = orders.filter((o) => o.transactionId === id);
+  const [items, myOrders] = await Promise.all([
+    getAllByIndex('transactionItems', 'transactionId', id),
+    getAllByIndex('orders', 'transactionId', id),
+  ]);
   const served = new Map();
   for (const o of myOrders) for (const it of o.items || []) if (it.itemId) served.set(it.itemId, !!it.served || o.status === 'selesai');
   const myItems = items
-    .filter((it) => it.transactionId === id)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .map((it) => ({ ...it, served: served.get(it.id) ?? myOrders.some((o) => o.status === 'selesai') }));
   return { transaction: trx, items: myItems, orders: myOrders };

@@ -162,6 +162,12 @@ export async function get(store, key) {
   return promisify(db.transaction(store).objectStore(store).get(key));
 }
 
+/** Ambil data lewat index (tidak membaca seluruh tabel). */
+export async function getAllByIndex(store, index, query) {
+  const db = await openDB();
+  return promisify(db.transaction(store).objectStore(store).index(index).getAll(query));
+}
+
 export async function count(store) {
   const db = await openDB();
   return promisify(db.transaction(store).objectStore(store).count());

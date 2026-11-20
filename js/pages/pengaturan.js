@@ -165,6 +165,17 @@ async function renderStatus(view) {
 
   rows.push(['Database lokal', badge('ok', 'Aktif')]);
 
+  try {
+    const runs = JSON.parse(localStorage.getItem('ct-startup') || '[]');
+    if (runs.length) {
+      const sec = (ms) => (ms / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+      const last = runs[0].ms;
+      rows.push(['Waktu buka aplikasi',
+        `${badge(last < 1500 ? 'ok' : last < 4000 ? 'warn' : 'bad', `${sec(last)} dtk`)}
+         <span class="small muted" style="margin-left:6px">sebelumnya: ${runs.slice(1).map((r) => sec(r.ms)).join(', ') || '—'}</span>`]);
+    }
+  } catch (_) { /* abaikan */ }
+
   const est = await estimate();
   if (est) rows.push(['Ruang terpakai', `<span class="muted">${formatBytes(est.usage)} dari ${formatBytes(est.quota)}</span>`]);
 
