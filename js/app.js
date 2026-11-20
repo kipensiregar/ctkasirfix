@@ -1,12 +1,12 @@
 import { openDB, onBlocked, getSetting, count, STORES } from './db.js';
 import { requestPersistence, isStandalone, isIOS } from './storage.js';
 import { banner, removeBanner, toast, esc, daysSince, closeAllModals } from './ui.js';
-import * as placeholder from './pages/placeholder.js';
 import * as pengaturan from './pages/pengaturan.js';
 import * as kasir from './pages/kasir.js';
 import * as stok from './pages/stok.js';
 import * as dapur from './pages/dapur.js';
 import * as antrean from './pages/antrean.js';
+import * as laporan from './pages/laporan.js';
 import { listKitchenOrders, listOpenTransactions } from './services/sales.js';
 
 // Semua halaman di-import statis agar ikut tersimpan oleh Service Worker.
@@ -14,7 +14,7 @@ const ROUTES = {
   kasir,
   dapur,
   antrean,
-  laporan: placeholder.make('Laporan', '📊', 'Omzet harian dan bulanan, produk terlaris, dan keuntungan.'),
+  laporan,
   stok,
   pengaturan,
 };

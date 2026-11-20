@@ -93,3 +93,27 @@ export function daysSince(iso) {
   if (!iso) return Infinity;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
+
+/**
+ * Simpan file: di iPad lewat lembar Bagikan (Files / AirDrop / WhatsApp),
+ * selain itu diunduh. @returns {'shared'|'downloaded'|'cancelled'}
+ */
+export async function shareOrDownload(file, title = '') {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title });
+      return 'shared';
+    } catch (err) {
+      if (err && err.name === 'AbortError') return 'cancelled';
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return 'downloaded';
+}

@@ -4,6 +4,16 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.7.0 — Modul Laporan
+
+- Periode: Hari ini, Kemarin, 7 hari, Bulan ini, Bulan lalu, atau rentang tanggal sendiri (tersimpan di URL).
+- Angka utama: omzet, jumlah transaksi lunas, rata-rata per transaksi, porsi terjual, laba kotor.
+- Laba dihitung dari harga modal yang tersimpan saat penjualan; jika ada menu tanpa harga modal, ditampilkan cakupannya (mis. "dari 70% porsi") dan daftar menunya.
+- Grafik omzet per jam (1 hari) atau per hari; ketuk batang untuk angka.
+- Produk terlaris (urut porsi/omzet), omzet per kategori, pembatalan dalam periode.
+- Riwayat penjualan + rincian; **Ekspor CSV** (pemisah titik koma, siap dibuka Excel).
+- Aturan: hanya transaksi lunas, berdasarkan tanggal bayar. Pesanan belum bayar & porsi yang dibatalkan tidak masuk omzet.
+
 ### v0.6.0 — Koreksi pesanan (kurangi/batal) & urutan antrean
 
 - **Koreksi** menampilkan semua menu yang sudah dipesan dengan − / +:
