@@ -81,7 +81,7 @@ function renderProducts(body, view, products, categories, catName) {
             ${p.trackStock ? `<span class="badge ${st}">Stok ${fmtNum(p.stock)}</span>` : '<span class="small muted">Stok tidak dihitung</span>'}
           </span>
         </button>
-        ${p.trackStock ? `<button type="button" class="btn secondary btn-stock" data-stock="${esc(p.id)}">± Stok</button>` : ''}
+        ${p.trackStock ? `<button type="button" class="btn secondary btn-stock" data-stock="${esc(p.id)}">Sunting stok</button>` : ''}
       </div>`;
     }).join('');
   };
@@ -130,12 +130,11 @@ function openProductForm(p, categories, catName) {
         </span>
         <input type="checkbox" class="switch" id="pf-track" ${tracked ? 'checked' : ''}>
       </label>
-      ${tracked ? `
-        <p class="small muted" id="pf-stock-info">Stok saat ini <b>${fmtNum(p.stock)}</b>. Ubah lewat tombol <b>± Stok</b> agar tercatat di riwayat.</p>` : `
-        <div id="pf-stock-wrap" hidden>
-          <label for="pf-stock">Stok awal</label>
-          <input id="pf-stock" type="text" inputmode="numeric" class="money" value="0">
-        </div>`}
+      <div id="pf-stock-wrap" ${tracked ? '' : 'hidden'}>
+        <label for="pf-stock">${tracked ? 'Stok tersedia' : 'Stok awal'}</label>
+        <input id="pf-stock" type="text" inputmode="numeric" class="money" value="${tracked ? fmtNum(p.stock) : '0'}">
+        ${tracked ? `<p class="small muted" id="pf-stock-hint" style="margin:6px 0 0">Perubahan stok dicatat di Riwayat Stok.</p>` : ''}
+      </div>
       <div class="btn-row">
         <button type="submit" class="btn" id="pf-save">Simpan</button>
         ${p ? '<button type="button" class="btn danger" id="pf-del">Hapus</button>' : ''}
@@ -144,11 +143,14 @@ function openProductForm(p, categories, catName) {
 
   moneyInputs(el);
   const track = el.querySelector('#pf-track');
-  track.addEventListener('change', () => {
-    const wrap = el.querySelector('#pf-stock-wrap');
-    if (wrap) wrap.hidden = !track.checked;
-    const info = el.querySelector('#pf-stock-info');
-    if (info) info.hidden = !track.checked;
+  track.addEventListener('change', () => { el.querySelector('#pf-stock-wrap').hidden = !track.checked; });
+  // Pratinjau selisih saat stok disunting
+  const stockIn = el.querySelector('#pf-stock');
+  const hint = el.querySelector('#pf-stock-hint');
+  if (tracked && hint) stockIn.addEventListener('input', () => {
+    const d = parseMoney(stockIn.value) - p.stock;
+    hint.innerHTML = !stockIn.value.trim() || d === 0 ? 'Perubahan stok dicatat di Riwayat Stok.'
+      : `Stok ${fmtNum(p.stock)} → <b>${fmtNum(parseMoney(stockIn.value))}</b> (<b class="${d > 0 ? 'text-ok' : 'text-bad'}">${d > 0 ? '+' : ''}${fmtNum(d)}</b>), dicatat di Riwayat Stok.`;
   });
 
   el.querySelector('#pf').addEventListener('submit', async (e) => {

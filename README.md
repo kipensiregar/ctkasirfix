@@ -4,6 +4,12 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.7.1 — Logo CT Catering & sunting stok
+
+- Logo CT Catering di header dan sebagai ikon aplikasi (Layar Utama iPad, 192/512, maskable). Sumber: `icons/` (dibuat dari logo asli, dikompres).
+- Stok produk bisa disunting langsung di form edit ("Stok tersedia"); selisih tercatat di Riwayat Stok (naik = Stok masuk, turun = Penyesuaian). Tombol "± Stok" menjadi "Sunting stok".
+- Catatan iPad: ikon di Layar Utama tidak berubah otomatis. Untuk memakai ikon baru: Backup → hapus ikon lama → Tambah ke Layar Utama lagi → Restore.
+
 ### v0.7.0 — Modul Laporan
 
 - Periode: Hari ini, Kemarin, 7 hari, Bulan ini, Bulan lalu, atau rentang tanggal sendiri (tersimpan di URL).

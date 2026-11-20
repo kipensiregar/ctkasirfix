@@ -27,8 +27,9 @@ function toInt(v, label, { allowNull = false } = {}) {
 /**
  * Simpan produk baru / perubahan produk.
  * input: { id?, name, categoryName, price, cost, trackStock, stock }
- * Stok awal hanya diisi saat produk baru / saat "Hitung stok" baru diaktifkan.
- * Perubahan stok berikutnya lewat recordStock() di services/stock.js.
+ * Stok: produk baru / "Hitung stok" baru diaktifkan → tercatat sebagai stok awal.
+ * Stok produk yang sudah dihitung boleh disunting langsung; selisihnya dicatat di riwayat
+ * (bertambah = stok masuk, berkurang = penyesuaian).
  */
 export function saveProduct(input) {
   const name = String(input.name || '').trim();
@@ -48,10 +49,10 @@ export function saveProduct(input) {
     const finish = (categoryId) => {
       const writeProduct = (existing) => {
         if (input.id && (!existing || existing.deleted)) { ctx.fail(new Error('Produk tidak ditemukan.')); return; }
-        const keepStock = !!(existing && existing.trackStock && input.trackStock);
+        const wasTracked = !!(existing && existing.trackStock && input.trackStock);
         let stock = existing?.stock ?? null;
-        if (input.trackStock && !keepStock) {
-          try { stock = toInt(input.stock, 'Stok awal'); } catch (err) { ctx.fail(err); return; }
+        if (input.trackStock && (!wasTracked || (input.stock !== '' && input.stock != null))) {
+          try { stock = toInt(input.stock, wasTracked ? 'Stok' : 'Stok awal'); } catch (err) { ctx.fail(err); return; }
         }
         const product = {
           ...(existing || { id: uid(), createdAt: now }),
@@ -60,10 +61,18 @@ export function saveProduct(input) {
           stock,
           updatedAt: now,
         };
-        if (input.trackStock && !keepStock) {
+        if (input.trackStock && !wasTracked) {
           s.stockMovements.put({
             id: uid(), productId: product.id, productName: name,
             type: 'initial', qty: stock, stockAfter: stock, note: 'Stok awal',
+            createdAt: now,
+          });
+        } else if (wasTracked && stock !== (existing.stock ?? 0)) {
+          const before = existing.stock ?? 0;
+          s.stockMovements.put({
+            id: uid(), productId: product.id, productName: name,
+            type: stock > before ? 'in' : 'adjust', qty: stock - before,
+            stockBefore: before, stockAfter: stock, note: 'Disunting dari form produk',
             createdAt: now,
           });
         }
