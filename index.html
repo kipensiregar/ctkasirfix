@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CT Catering POS</title>
+  <meta name="description" content="Aplikasi kasir offline CT Catering">
+  <meta name="theme-color" content="#16a34a">
+
+  <!-- iPad / iOS: tampil layar penuh saat dibuka dari Home Screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CT POS">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="./icons/icon-192.png" alt="" class="brand-logo">
+      <div>
+        <div class="brand-name" id="brand-name">CT Catering</div>
+        <div class="brand-sub">Kasir Offline</div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Navigasi utama">
+      <a href="#/kasir" data-route="kasir">Kasir</a>
+      <a href="#/dapur" data-route="dapur">Dapur</a>
+      <a href="#/antrean" data-route="antrean">Antrean</a>
+      <a href="#/laporan" data-route="laporan">Laporan</a>
+      <a href="#/stok" data-route="stok">Stok</a>
+      <a href="#/pengaturan" data-route="pengaturan">Pengaturan</a>
+    </nav>
+    <div class="net" id="net-status" title="Status koneksi">
+      <span class="dot"></span><span class="net-label">—</span>
+    </div>
+  </header>
+
+  <div id="banners"></div>
+
+  <main id="view" class="view" tabindex="-1">
+    <div class="loading">Memuat…</div>
+  </main>
+
+  <noscript>Aplikasi ini memerlukan JavaScript.</noscript>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
