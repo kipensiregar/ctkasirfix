@@ -123,7 +123,13 @@ function openProductForm(p, categories, catName) {
         <div><label for="pf-cost">Harga modal (Rp, opsional)</label>
           <input id="pf-cost" type="text" inputmode="numeric" class="money" value="${fmt(p?.cost)}"></div>
       </div>
-      <label class="check"><input type="checkbox" id="pf-track" ${tracked ? 'checked' : ''}> Hitung stok produk ini</label>
+      <label class="toggle" for="pf-track">
+        <span class="toggle-text">
+          <span class="toggle-title">Hitung stok</span>
+          <span class="toggle-sub">Untuk produk yang jumlahnya terbatas, mis. minuman kemasan</span>
+        </span>
+        <input type="checkbox" class="switch" id="pf-track" ${tracked ? 'checked' : ''}>
+      </label>
       ${tracked ? `
         <p class="small muted" id="pf-stock-info">Stok saat ini <b>${fmtNum(p.stock)}</b>. Ubah lewat tombol <b>± Stok</b> agar tercatat di riwayat.</p>` : `
         <div id="pf-stock-wrap" hidden>

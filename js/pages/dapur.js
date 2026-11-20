@@ -48,7 +48,7 @@ export async function render(view) {
                       <span class="ti-name"><b>${it.qty}×</b> ${esc(it.name)}</span>
                       ${it.note ? `<span class="ti-note">${esc(it.note)}</span>` : ''}
                     </span>
-                    <span class="check">${it.served ? '✓' : ''}</span>
+                    <span class="serve-check">${it.served ? '✓' : ''}</span>
                   </button>
                 </li>`).join('')}
             </ul>
