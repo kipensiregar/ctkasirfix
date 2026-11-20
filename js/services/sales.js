@@ -70,50 +70,7 @@ export function sendToKitchen(cart, info = {}) {
         }
 
         const writeAll = (trx, isNew) => {
-          // 2. Detail transaksi (snapshot) + stok.
-          const items = lines.map((l, i) => {
-            const p = products[i];
-            const item = {
-              id: uid(), transactionId: trx.id, productId: p.id,
-              name: p.name, categoryId: p.categoryId ?? null,
-              price: p.price, cost: p.cost ?? null, qty: l.qty,
-              subtotal: p.price * l.qty, note: l.note,
-              round: trx.rounds + 1, createdAt,
-            };
-            s.transactionItems.put(item);
-            if (p.trackStock) {
-              const stockAfter = (p.stock ?? 0) - l.qty;
-              s.products.put({ ...p, stock: stockAfter, updatedAt: createdAt });
-              s.stockMovements.put({
-                id: uid(), productId: p.id, productName: p.name, type: 'sale',
-                qty: -l.qty, stockAfter, refId: trx.id, note: `Pesanan #${trx.queueNo}`, createdAt,
-              });
-            }
-            return item;
-          });
-
-          const added = items.reduce((a, it) => a + it.subtotal, 0);
-          const updated = {
-            ...trx,
-            rounds: trx.rounds + 1,
-            subtotal: trx.subtotal + added,
-            total: trx.total + added,
-            itemCount: trx.itemCount + items.reduce((a, it) => a + it.qty, 0),
-            updatedAt: createdAt,
-          };
-          s.transactions.put(updated);
-
-          // 3. Tiket dapur (berisi item ronde ini saja).
-          const order = {
-            id: uid(), transactionId: trx.id, number: trx.number, queueNo: trx.queueNo, dateKey,
-            round: updated.rounds, isAddition: !isNew,
-            tableNo: updated.tableNo, customerName: updated.customerName,
-            status: 'menunggu', note,
-            items: items.map((it) => ({ itemId: it.id, name: it.name, qty: it.qty, note: it.note, served: false, servedAt: null })),
-            createdAt, updatedAt: createdAt, completedAt: null,
-          };
-          s.orders.put(order);
-          ctx.result = { transaction: updated, order };
+          ctx.result = writeRound(s, trx, lines, products, { isNew, createdAt, dateKey, note });
         };
 
         if (info.transactionId) {
@@ -142,6 +99,196 @@ export function sendToKitchen(cart, info = {}) {
           }, true);
         };
       });
+    },
+  );
+}
+
+/**
+ * Tulis satu "ronde" pesanan (pesanan awal atau tambahan) di dalam transaksi DB yang sedang berjalan:
+ * detail item (snapshot) + pengurangan stok + update total transaksi + tiket dapur.
+ * products[i] harus sejajar dengan lines[i].
+ */
+function writeRound(s, trx, lines, products, { isNew, createdAt, dateKey, note = '' }) {
+  const rounds = trx.rounds || 0;
+  const items = lines.map((l, i) => {
+    const p = products[i];
+    const item = {
+      id: uid(), transactionId: trx.id, productId: p.id,
+      name: p.name, categoryId: p.categoryId ?? null,
+      price: p.price, cost: p.cost ?? null, qty: l.qty,
+      subtotal: p.price * l.qty, note: l.note || '',
+      round: rounds + 1, createdAt,
+    };
+    s.transactionItems.put(item);
+    if (p.trackStock) {
+      const stockAfter = (p.stock ?? 0) - l.qty;
+      p.stock = stockAfter;
+      s.products.put({ ...p, stock: stockAfter, updatedAt: createdAt });
+      s.stockMovements.put({
+        id: uid(), productId: p.id, productName: p.name, type: 'sale',
+        qty: -l.qty, stockAfter, refId: trx.id, note: `Pesanan #${trx.queueNo}`, createdAt,
+      });
+    }
+    return item;
+  });
+
+  const added = items.reduce((a, it) => a + it.subtotal, 0);
+  const updated = {
+    ...trx,
+    rounds: rounds + 1,
+    subtotal: trx.subtotal + added,
+    total: trx.total + added,
+    itemCount: trx.itemCount + items.reduce((a, it) => a + it.qty, 0),
+    updatedAt: createdAt,
+  };
+  s.transactions.put(updated);
+
+  const order = {
+    id: uid(), transactionId: trx.id, number: trx.number, queueNo: trx.queueNo, dateKey,
+    round: updated.rounds, isAddition: !isNew,
+    tableNo: updated.tableNo, customerName: updated.customerName,
+    status: 'menunggu', note,
+    items: items.map((it) => ({ itemId: it.id, name: it.name, qty: it.qty, note: it.note, served: false, servedAt: null })),
+    createdAt, updatedAt: createdAt, completedAt: null,
+  };
+  s.orders.put(order);
+  return { transaction: updated, order };
+}
+
+/**
+ * Koreksi pesanan meja yang belum bayar.
+ * desired: jumlah AKHIR per produk yang diinginkan, mis. [{productId, qty: 1, note}].
+ *   - lebih besar dari sebelumnya → selisihnya dikirim ke dapur sebagai tambahan
+ *   - lebih kecil → selisihnya dibatalkan: stok dikembalikan, tiket dapur diperbarui
+ *   - produk yang tidak disebut → tidak berubah
+ * Jika semua item dibatalkan, pesanan berstatus 'void' (dibatalkan) dan hilang dari antrean.
+ */
+export function correctOrder(transactionId, desired) {
+  const want = new Map();
+  for (const d of desired || []) {
+    if (!d || !d.productId) continue;
+    if (!Number.isInteger(d.qty) || d.qty < 0 || d.qty > 9999) return Promise.reject(new Error('Jumlah produk tidak valid.'));
+    want.set(d.productId, { qty: d.qty, note: clean(d.note, 120) });
+  }
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const dateKey = localDateKey(now);
+
+  return withTx(
+    ['products', 'transactions', 'transactionItems', 'orders', 'stockMovements', 'settings'],
+    'readwrite',
+    (s, ctx) => {
+      s.transactions.get(transactionId).onsuccess = (e) => {
+        const trx0 = e.target.result;
+        if (!trx0) { ctx.fail(new Error('Pesanan tidak ditemukan.')); return; }
+        if (trx0.status !== 'open') { ctx.fail(new Error('Pesanan ini sudah dibayar atau dibatalkan.')); return; }
+
+        s.transactionItems.index('transactionId').getAll(transactionId).onsuccess = (e2) => {
+          const items = e2.target.result.filter((it) => it.qty > 0);
+          s.orders.index('transactionId').getAll(transactionId).onsuccess = (e3) => {
+            const orders = e3.target.result;
+            const served = new Map();
+            for (const o of orders) for (const it of o.items || []) {
+              if (it.itemId) served.set(it.itemId, !!it.served || o.status === 'selesai');
+            }
+
+            const existing = new Map();
+            for (const it of items) existing.set(it.productId, (existing.get(it.productId) || 0) + it.qty);
+
+            const adds = [];
+            const cancels = [];
+            for (const [productId, w] of want) {
+              const diff = w.qty - (existing.get(productId) || 0);
+              if (diff > 0) adds.push({ productId, qty: diff, note: w.note });
+              else if (diff < 0) cancels.push({ productId, qty: -diff });
+            }
+            if (!adds.length && !cancels.length) { ctx.fail(new Error('Tidak ada perubahan.')); return; }
+
+            const ids = [...new Set([...adds, ...cancels].map((x) => x.productId))];
+            getMany(s.products, ids, (prods) => {
+              const prodById = new Map(ids.map((id, i) => [id, prods[i]]));
+              for (const a of adds) {
+                const p = prodById.get(a.productId);
+                if (!p || p.deleted) { ctx.fail(new Error('Ada produk tambahan yang sudah dihapus.')); return; }
+                if (p.trackStock && (p.stock ?? 0) < a.qty) {
+                  ctx.fail(new Error(`Stok ${p.name} tidak cukup (sisa ${p.stock ?? 0}).`));
+                  return;
+                }
+              }
+
+              // ---- Pembatalan: kurangi item yang belum dihidangkan & terbaru dulu ----
+              let trx = { rounds: 1, cancellations: [], ...trx0 };
+              const orderById = new Map(orders.map((o) => [o.id, { ...o, items: (o.items || []).map((x) => ({ ...x })) }]));
+              const touchedOrders = new Set();
+              for (const c of cancels) {
+                let left = c.qty;
+                const mine = items
+                  .filter((it) => it.productId === c.productId)
+                  .sort((a, b) => (Number(!!served.get(a.id)) - Number(!!served.get(b.id))) || b.createdAt.localeCompare(a.createdAt));
+                for (const it of mine) {
+                  if (!left) break;
+                  const k = Math.min(left, it.qty);
+                  left -= k;
+                  const upd = { ...it, qty: it.qty - k, cancelledQty: (it.cancelledQty || 0) + k, subtotal: it.price * (it.qty - k), updatedAt: createdAt };
+                  s.transactionItems.put(upd);
+                  trx = {
+                    ...trx,
+                    subtotal: trx.subtotal - it.price * k,
+                    total: trx.total - it.price * k,
+                    itemCount: trx.itemCount - k,
+                    cancellations: [...trx.cancellations, { at: createdAt, productId: it.productId, name: it.name, qty: k, amount: it.price * k }],
+                  };
+                  // Tiket dapur
+                  for (const o of orderById.values()) {
+                    const ti = o.items.find((x) => x.itemId === it.id);
+                    if (!ti) continue;
+                    ti.qty -= k;
+                    if (ti.qty <= 0) o.items = o.items.filter((x) => x !== ti);
+                    touchedOrders.add(o.id);
+                  }
+                  // Stok kembali
+                  const p = prodById.get(it.productId);
+                  if (p && !p.deleted && p.trackStock) {
+                    p.stock = (p.stock ?? 0) + k;
+                    s.products.put({ ...p, updatedAt: createdAt });
+                    s.stockMovements.put({
+                      id: uid(), productId: p.id, productName: p.name, type: 'cancel',
+                      qty: k, stockAfter: p.stock, refId: trx.id, note: `Batal pesanan #${trx.queueNo}`, createdAt,
+                    });
+                  }
+                }
+              }
+              for (const id of touchedOrders) {
+                const o = orderById.get(id);
+                if (!o.items.length) {
+                  s.orders.put({ ...o, status: 'batal', completedAt: createdAt, updatedAt: createdAt });
+                } else {
+                  s.orders.put({ ...o, updatedAt: createdAt });
+                }
+              }
+
+              // ---- Tambahan ----
+              let order = null;
+              trx.updatedAt = createdAt;
+              if (adds.length) {
+                const r = writeRound(s, trx, adds, adds.map((a) => prodById.get(a.productId)), { isNew: false, createdAt, dateKey });
+                trx = r.transaction;
+                order = r.order;
+              } else if (trx.itemCount <= 0) {
+                trx = { ...trx, status: 'void', voidAt: createdAt, total: 0, subtotal: 0, itemCount: 0 };
+                s.transactions.put(trx);
+              } else {
+                s.transactions.put(trx);
+              }
+              ctx.result = {
+                transaction: trx, order,
+                added: adds.reduce((a, x) => a + x.qty, 0),
+                cancelled: cancels.reduce((a, x) => a + x.qty, 0),
+              };
+            });
+          };
+        };
+      };
     },
   );
 }
@@ -246,6 +393,7 @@ export async function getTransactionDetail(id) {
   const served = new Map();
   for (const o of myOrders) for (const it of o.items || []) if (it.itemId) served.set(it.itemId, !!it.served || o.status === 'selesai');
   const myItems = items
+    .filter((it) => it.qty > 0)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .map((it) => ({ ...it, served: served.get(it.id) ?? myOrders.some((o) => o.status === 'selesai') }));
   return { transaction: trx, items: myItems, orders: myOrders };

@@ -1,8 +1,11 @@
 // Kasir: mencatat pesanan lalu mengirimnya ke dapur. Pembayaran dilakukan di Antrean.
-// Mode tambahan (Koreksi): #/kasir?tambah=<transactionId>
+// Mode Koreksi: #/kasir?tambah=<transactionId>
+//   Pesanan sebelumnya tampil dengan − / +. Kurangi = batalkan porsi, tambah = dikirim ke dapur.
 import { getSetting, setSetting, get } from '../db.js';
 import { listProducts, listCategories } from '../services/products.js';
-import { sendToKitchen, listOpenTransactions, whoLine } from '../services/sales.js';
+import {
+  sendToKitchen, correctOrder, getTransactionDetail, listOpenTransactions, whoLine,
+} from '../services/sales.js';
 import { esc, toast, rupiah, openModal } from '../ui.js';
 
 const DRAFT_KEY = 'cartDraft';
@@ -24,11 +27,12 @@ export async function render(view) {
   }
 
   const draftKey = target ? DRAFT_ADD_KEY : DRAFT_KEY;
-  const [products, categories, rawDraft] = await Promise.all([
+  const [products, categories, rawDraft, detail] = await Promise.all([
     listProducts(), listCategories(), getSetting(draftKey, null),
+    target ? getTransactionDetail(target.id) : null,
   ]);
-  // Draf tambahan hanya berlaku untuk pesanan yang sama.
-  const draft = target && rawDraft?.transactionId !== target.id ? null : rawDraft;
+  // Draf koreksi hanya berlaku untuk pesanan yang sama (format v2).
+  const draft = target && (rawDraft?.transactionId !== target.id || rawDraft?.v !== 2) ? null : rawDraft;
 
   const productById = new Map(products.map((p) => [p.id, p]));
   const catById = new Map(categories.map((c) => [c.id, c]));
@@ -41,17 +45,32 @@ export async function render(view) {
   const tintOf = new Map(categories.map((c, i) => [c.id, TINTS[i % TINTS.length]]));
 
   const state = {
-    cart: new Map(), // productId -> { qty, note }
+    // productId -> { qty, base, note, name, price }
+    //   base = jumlah yang sudah dipesan sebelumnya (mode Koreksi), 0 untuk pesanan baru
+    cart: new Map(),
     cat: 'all',
     q: '',
     tableNo: target ? target.tableNo : String(draft?.tableNo || ''),
     customerName: target ? target.customerName : String(draft?.customerName || ''),
   };
-  for (const it of draft?.items || []) {
-    if (productById.has(it.productId) && Number.isInteger(it.qty) && it.qty > 0) {
-      state.cart.set(it.productId, { qty: it.qty, note: String(it.note || '') });
+  if (detail) {
+    for (const it of detail.items) {
+      const l = state.cart.get(it.productId);
+      if (l) { l.qty += it.qty; l.base += it.qty; }
+      else state.cart.set(it.productId, { qty: it.qty, base: it.qty, note: '', name: it.name, price: it.price });
     }
   }
+  for (const it of draft?.items || []) {
+    if (!Number.isInteger(it.qty) || it.qty < 0) continue;
+    const l = state.cart.get(it.productId);
+    if (l) { l.qty = it.qty; l.note = String(it.note || ''); }
+    else if (productById.has(it.productId) && it.qty > 0) {
+      const p = productById.get(it.productId);
+      state.cart.set(it.productId, { qty: it.qty, base: 0, note: String(it.note || ''), name: p.name, price: p.price });
+    }
+  }
+  const lineName = (id, l) => productById.get(id)?.name || l.name;
+  const linePrice = (id, l) => productById.get(id)?.price ?? l.price;
 
   if (!products.length) {
     view.innerHTML = `
@@ -78,7 +97,7 @@ export async function render(view) {
         ${target ? `
         <div class="add-banner">
           <div>
-            <div class="small">Tambahan untuk</div>
+            <div class="small">Koreksi pesanan</div>
             <div class="add-who">${esc(whoLine(target))} <span class="muted small">#${esc(target.queueNo)}</span></div>
           </div>
           <a class="btn secondary" href="#/antrean" id="add-cancel">Batal</a>
@@ -100,9 +119,9 @@ export async function render(view) {
         <div class="cart-items" id="cart-items"></div>
         <div class="cart-foot">
           ${target ? `<div class="cart-row"><span class="muted">Pesanan sebelumnya</span><span>${rupiah(target.total)}</span></div>` : ''}
-          <div class="cart-row"><span class="muted">${target ? 'Tambahan' : 'Jumlah item'}</span><span id="cart-count">0</span></div>
+          <div class="cart-row"><span class="muted">${target ? 'Perubahan' : 'Jumlah item'}</span><span id="cart-count">0</span></div>
           <div class="cart-row total"><span>${target ? 'Total baru' : 'Total'}</span><span id="cart-total">Rp0</span></div>
-          <button type="button" class="btn btn-pay" id="btn-send">${target ? 'Kirim Tambahan ke Dapur' : 'Kirim ke Dapur'}</button>
+          <button type="button" class="btn btn-pay" id="btn-send">${target ? 'Simpan Koreksi' : 'Kirim ke Dapur'}</button>
         </div>
       </aside>
     </div>`;
@@ -118,7 +137,7 @@ export async function render(view) {
     const items = [...state.cart].map(([productId, l]) => ({ productId, qty: l.qty, note: l.note }));
     let value = null;
     if (target) {
-      if (items.length) value = { transactionId: target.id, items };
+      if ([...state.cart.values()].some((l) => l.qty !== l.base)) value = { v: 2, transactionId: target.id, items };
     } else if (items.length || state.tableNo.trim() || state.customerName.trim()) {
       value = { items, tableNo: state.tableNo, customerName: state.customerName };
     }
@@ -130,12 +149,16 @@ export async function render(view) {
   };
 
   const totals = () => {
-    let total = 0, count = 0;
+    let total = 0, count = 0, delta = 0, changes = 0, added = 0, removed = 0;
     for (const [id, l] of state.cart) {
-      const p = productById.get(id);
-      if (p) { total += p.price * l.qty; count += l.qty; }
+      const price = linePrice(id, l);
+      total += price * l.qty;
+      count += l.qty;
+      delta += price * (l.qty - l.base);
+      changes += Math.abs(l.qty - l.base);
+      if (l.qty > l.base) added += l.qty - l.base; else removed += l.base - l.qty;
     }
-    return { total, count };
+    return { total, count, delta, changes, added, removed };
   };
 
   // ---------- Katalog ----------
@@ -150,8 +173,9 @@ export async function render(view) {
       return;
     }
     grid.innerHTML = list.map((p) => {
-      const inCart = state.cart.get(p.id)?.qty || 0;
-      const left = p.trackStock ? (p.stock ?? 0) - inCart : null;
+      const line = state.cart.get(p.id);
+      const inCart = line?.qty || 0;
+      const left = p.trackStock ? (p.stock ?? 0) - (inCart - (line?.base || 0)) : null;
       const out = p.trackStock && left <= 0;
       const cat = p.categoryId ? catById.get(p.categoryId)?.name : '';
       const [tint, tintInk] = tintOf.get(p.categoryId) || TINTS[0];
@@ -174,28 +198,47 @@ export async function render(view) {
       cartEl.innerHTML = `<p class="muted cart-empty">Ketuk produk untuk menambahkan ke pesanan.</p>`;
     } else {
       cartEl.innerHTML = [...state.cart].map(([id, l]) => {
-        const p = productById.get(id);
+        const price = linePrice(id, l);
+        const diff = l.qty - l.base;
+        const canAdd = productById.has(id);
+        const status = l.base
+          ? (diff > 0 ? `<span class="chg add">+${diff} tambahan</span>`
+            : diff < 0 ? `<span class="chg del">−${-diff} dibatalkan</span>`
+              : '<span class="chg">Sudah dipesan</span>')
+          : '';
         return `
-          <div class="cart-item">
+          <div class="cart-item${l.base ? ' is-prev' : ''}${l.base && !l.qty ? ' is-void' : ''}">
             <div class="ci-info">
-              <div class="ci-name">${esc(p.name)}</div>
-              <div class="ci-price muted small">${rupiah(p.price)}</div>
+              <div class="ci-name">${esc(lineName(id, l))}</div>
+              <div class="ci-price muted small">${rupiah(price)}${l.base ? ` · dipesan ${l.base}` : ''}</div>
             </div>
-            <div class="ci-sub">${rupiah(p.price * l.qty)}</div>
-            <div class="stepper">
-              <button type="button" data-dec="${esc(id)}" aria-label="Kurangi">−</button>
-              <span>${l.qty}</span>
-              <button type="button" data-inc="${esc(id)}" aria-label="Tambah">+</button>
+            <div class="ci-sub">${rupiah(price * l.qty)}</div>
+            <div class="ci-step">
+              <div class="stepper">
+                <button type="button" data-dec="${esc(id)}" aria-label="Kurangi" ${l.qty ? '' : 'disabled'}>−</button>
+                <span>${l.qty}</span>
+                <button type="button" data-inc="${esc(id)}" aria-label="Tambah" ${canAdd ? '' : 'disabled'}>+</button>
+              </div>
+              ${status}
             </div>
-            <input type="text" class="ci-note" data-note="${esc(id)}" maxlength="120"
-              placeholder="Catatan… (mis. pedas, tanpa bawang)" value="${esc(l.note)}" autocomplete="off">
+            ${diff > 0 ? `<input type="text" class="ci-note" data-note="${esc(id)}" maxlength="120"
+              placeholder="Catatan untuk dapur… (mis. pedas)" value="${esc(l.note)}" autocomplete="off">` : ''}
           </div>`;
       }).join('');
     }
-    const { total, count } = totals();
-    view.querySelector('#cart-count').textContent = target ? rupiah(total) : count;
-    view.querySelector('#cart-total').textContent = rupiah(target ? target.total + total : total);
-    view.querySelector('#btn-send').disabled = count === 0;
+    const { total, count, delta, changes } = totals();
+    const sendBtnEl = view.querySelector('#btn-send');
+    if (target) {
+      view.querySelector('#cart-count').textContent = changes ? `${delta >= 0 ? '+' : '−'}${rupiah(Math.abs(delta))}` : 'Belum ada';
+      view.querySelector('#cart-total').textContent = rupiah(target.total + delta);
+      sendBtnEl.disabled = changes === 0;
+      sendBtnEl.classList.toggle('danger-solid', changes > 0 && count === 0);
+      if (!sending) sendBtnEl.textContent = count === 0 && changes ? 'Batalkan Seluruh Pesanan' : 'Simpan Koreksi';
+    } else {
+      view.querySelector('#cart-count').textContent = count;
+      view.querySelector('#cart-total').textContent = rupiah(total);
+      sendBtnEl.disabled = count === 0;
+    }
     const clear = view.querySelector('#cart-clear');
     if (clear) clear.hidden = count === 0 && !state.tableNo && !state.customerName;
   };
@@ -204,14 +247,14 @@ export async function render(view) {
 
   const add = (id, delta) => {
     const p = productById.get(id);
-    if (!p) return;
-    const line = state.cart.get(id) || { qty: 0, note: '' };
-    const next = line.qty + delta;
-    if (delta > 0 && p.trackStock && next > (p.stock ?? 0)) {
+    const line = state.cart.get(id) || (p ? { qty: 0, base: 0, note: '', name: p.name, price: p.price } : null);
+    if (!line || (delta > 0 && !p)) return;
+    const next = Math.max(0, line.qty + delta);
+    if (delta > 0 && p.trackStock && next - line.base > (p.stock ?? 0)) {
       toast(`Stok ${p.name} tidak cukup (sisa ${p.stock ?? 0}).`, { error: true });
       return;
     }
-    if (next <= 0) state.cart.delete(id);
+    if (next === 0 && !line.base) state.cart.delete(id);
     else state.cart.set(id, { ...line, qty: next });
     refresh();
   };
@@ -286,14 +329,42 @@ export async function render(view) {
     } catch (err) {
       toast(err.message || 'Gagal mengirim pesanan.', { error: true, ms: 6000 });
       sending = false;
-      sendBtn.textContent = target ? 'Kirim Tambahan ke Dapur' : 'Kirim ke Dapur';
+      sendBtn.textContent = 'Kirim ke Dapur';
+      renderCart();
+    }
+  }
+
+  async function doCorrect() {
+    const { count, added, removed } = totals();
+    if (count === 0 && !confirm(`Batalkan SELURUH pesanan ${whoLine(target)} (#${target.queueNo})?\nStok akan dikembalikan dan pesanan hilang dari antrean.`)) return;
+    sending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Menyimpan…';
+    try {
+      const res = await correctOrder(target.id,
+        [...state.cart].map(([productId, l]) => ({ productId, qty: l.qty, note: l.note })));
+      state.cart.clear();
+      await setSetting(DRAFT_ADD_KEY, null);
+      window.dispatchEvent(new Event('ct:data-changed'));
+      const who = whoLine(target);
+      if (res.transaction.status === 'void') toast(`Pesanan ${who} dibatalkan.`);
+      else {
+        const parts = [];
+        if (removed) parts.push(`${removed} porsi dibatalkan`);
+        if (added) parts.push(`${added} porsi dikirim ke dapur`);
+        toast(`Koreksi ${who}: ${parts.join(', ')}.`, { ms: 4000 });
+      }
+      location.hash = '#/antrean';
+    } catch (err) {
+      toast(err.message || 'Gagal menyimpan koreksi.', { error: true, ms: 6000 });
+      sending = false;
       renderCart();
     }
   }
 
   sendBtn.addEventListener('click', async () => {
     if (sending || !state.cart.size) return;
-    if (target) { doSend(target.id); return; }
+    if (target) { doCorrect(); return; }
 
     if (!state.tableNo.trim() && !state.customerName.trim()) {
       toast('Isi nomor meja atau nama pemesan dulu.', { error: true });

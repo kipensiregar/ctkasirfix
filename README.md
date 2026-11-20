@@ -4,6 +4,16 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.6.0 — Koreksi pesanan (kurangi/batal) & urutan antrean
+
+- **Koreksi** menampilkan semua menu yang sudah dipesan dengan − / +:
+  - − membatalkan porsi: stok dikembalikan (tercatat "Pembatalan pesanan"), tiket dapur diperbarui (porsi yang belum dihidangkan dikurangi lebih dulu), total turun.
+  - + atau ketuk katalog: tambahan dikirim ke dapur sebagai tiket *Tambahan* (bisa diberi catatan).
+  - Ringkasan: pesanan sebelumnya, perubahan (+/−), total baru. Koreksi yang belum disimpan tetap ada setelah refresh.
+  - Semua menu dikurangi ke 0 → **Batalkan Seluruh Pesanan** (status `void`, hilang dari antrean & dapur, stok kembali).
+- **Antrean** diurutkan: nomor meja (1, 2, … 10) lalu nama pemesan A–Z.
+- Header tanpa efek kaca buram (blur).
+
 ### v0.5.0 — Tampilan baru
 
 - Desain lebih lapang: panel putih tanpa garis tebal, bayangan tipis, latar abu-hijau muda.

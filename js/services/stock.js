@@ -8,6 +8,7 @@ export const MOVE_LABELS = {
   out: 'Stok keluar',
   adjust: 'Penyesuaian',
   sale: 'Penjualan',
+  cancel: 'Pembatalan pesanan',
 };
 
 /**

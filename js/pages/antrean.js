@@ -1,5 +1,5 @@
 // Antrean: meja/pesanan yang belum dibayar + riwayat hari ini.
-// Ketuk kartu → lihat daftar pesanan → Koreksi (tambah menu) atau Bayar.
+// Ketuk kartu → lihat daftar pesanan → Koreksi pesanan atau Bayar.
 import {
   listOpenTransactions, listPaidToday, getTransactionDetail, kitchenSummary, whoLine,
 } from '../services/sales.js';
@@ -8,8 +8,19 @@ import { esc, rupiah, openModal } from '../ui.js';
 
 const time = (iso) => new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+// Urutan antrean: pesanan dengan nomor meja dulu (1, 2, … 10), lalu yang hanya bernama (A–Z).
+const coll = new Intl.Collator('id', { numeric: true, sensitivity: 'base' });
+export function byTableThenName(a, b) {
+  const ta = (a.tableNo || '').trim(), tb = (b.tableNo || '').trim();
+  if (ta && !tb) return -1;
+  if (!ta && tb) return 1;
+  return coll.compare(ta, tb) || coll.compare(a.customerName || '', b.customerName || '') ||
+    String(a.queueNo).localeCompare(String(b.queueNo));
+}
+
 export async function render(view) {
-  const [open, paid] = await Promise.all([listOpenTransactions(), listPaidToday()]);
+  const [openRaw, paid] = await Promise.all([listOpenTransactions(), listPaidToday()]);
+  const open = openRaw.sort(byTableThenName);
   const details = new Map();
   await Promise.all(open.map(async (t) => details.set(t.id, await getTransactionDetail(t.id))));
 
@@ -75,7 +86,7 @@ export async function render(view) {
       ${!isOpen ? `<table class="simple"><tr><td>Tunai</td><td>${rupiah(t.cashReceived)}</td></tr>
         <tr><td>Kembalian</td><td>${rupiah(t.change)}</td></tr></table>` : ''}
       ${isOpen ? `<div class="btn-row two">
-        <a class="btn secondary" href="#/kasir?tambah=${encodeURIComponent(t.id)}" id="d-fix">Koreksi (tambah menu)</a>
+        <a class="btn secondary" href="#/kasir?tambah=${encodeURIComponent(t.id)}" id="d-fix">Koreksi pesanan</a>
         <button type="button" class="btn" id="d-pay">Bayar</button>
       </div>` : ''}`, { wide: true });
     el.querySelector('#d-fix')?.addEventListener('click', () => close());
@@ -91,7 +102,8 @@ export async function render(view) {
   const timer = setInterval(async () => {
     if (document.querySelector('.modal-backdrop')) return;
     const fresh = await listOpenTransactions();
-    if (fresh.length !== open.length || fresh.some((t, i) => t.updatedAt !== open[i]?.updatedAt)) {
+    const key = (list) => list.map((t) => `${t.id}:${t.updatedAt}`).sort().join('|');
+    if (key(fresh) !== key(open)) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
   }, 20000);

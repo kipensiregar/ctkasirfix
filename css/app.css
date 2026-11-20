@@ -84,9 +84,7 @@ h2 { font-size: 19px; line-height: 1.25; letter-spacing: -.01em; margin: 0 0 12p
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: 18px;
   padding: calc(10px + var(--safe-top)) 20px 10px;
-  background: rgba(255, 255, 255, .92);
-  -webkit-backdrop-filter: saturate(1.6) blur(14px);
-  backdrop-filter: saturate(1.6) blur(14px);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -422,7 +420,16 @@ table.simple td:last-child { text-align: right; }
 .cart-row { display: flex; justify-content: space-between; padding: 3px 0; color: var(--ink-2); }
 .cart-row.total { color: var(--ink); font-size: 24px; font-weight: 800; letter-spacing: -.02em; padding: 6px 0 14px; }
 
-/* Mode tambahan (Koreksi) */
+/* Mode Koreksi */
+.ci-step { grid-area: step; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ci-step .stepper { grid-area: auto; }
+.stepper button:disabled { opacity: .35; box-shadow: none; }
+.chg { font-size: 13px; font-weight: 650; color: var(--ink-3); }
+.chg.add { color: var(--green-ink); background: var(--green-wash); padding: 3px 9px; border-radius: 999px; }
+.chg.del { color: var(--cabai); background: var(--cabai-wash); padding: 3px 9px; border-radius: 999px; }
+.cart-item.is-void .ci-name, .cart-item.is-void .ci-sub { color: var(--ink-3); text-decoration: line-through; }
+.btn.danger-solid { background: var(--cabai); }
+.btn.danger-solid:active { background: #a92d17; }
 .pos-cart.add-mode { box-shadow: 0 0 0 2px #f2c36b, var(--shadow-2); }
 .add-banner {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
