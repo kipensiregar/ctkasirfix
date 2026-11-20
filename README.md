@@ -4,6 +4,16 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.5.0 — Tampilan baru
+
+- Desain lebih lapang: panel putih tanpa garis tebal, bayangan tipis, latar abu-hijau muda.
+- Navigasi dengan ikon (SVG lokal); di iPad tegak ikon + label kecil.
+- Warna lembut per kategori di kartu menu (daun, kunyit, cabai, terong, kecap, laut).
+- Huruf bawaan perangkat (SF Pro di iPad) — tanpa file font tambahan.
+- Pengingat backup bisa ditunda ("Nanti") untuk sesi ini.
+- Perbaikan: jendela pop-up otomatis tertutup saat pindah halaman.
+- Animasi minimal; menghormati pengaturan "Kurangi Gerakan" di iPad.
+
 ### v0.4.0 — Modul Stok
 
 - Tab **Produk**: ringkasan jumlah produk, stok menipis (≤5), stok habis (bisa diketuk sebagai filter); tombol **± Stok** per produk.

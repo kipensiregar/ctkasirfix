@@ -58,6 +58,12 @@ export function parseMoney(s) {
  * Modal sederhana yang ramah sentuh.
  * @returns {{el:HTMLElement, close:Function}}
  */
+const openModals = new Set();
+/** Tutup semua modal (dipanggil saat pindah halaman). */
+export function closeAllModals() {
+  [...openModals].forEach((close) => close());
+}
+
 export function openModal(html, { onClose, dismissible = true, wide = false } = {}) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -69,6 +75,7 @@ export function openModal(html, { onClose, dismissible = true, wide = false } = 
   const close = () => {
     if (closed) return;
     closed = true;
+    openModals.delete(close);
     backdrop.remove();
     if (!document.querySelector('.modal-backdrop')) document.body.classList.remove('modal-open');
     document.removeEventListener('keydown', onKey);
@@ -78,6 +85,7 @@ export function openModal(html, { onClose, dismissible = true, wide = false } = 
   document.addEventListener('keydown', onKey);
   if (dismissible) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
   el.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
+  openModals.add(close);
   return { el, close };
 }
 

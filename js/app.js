@@ -1,6 +1,6 @@
 import { openDB, onBlocked, getSetting, count, STORES } from './db.js';
 import { requestPersistence, isStandalone, isIOS } from './storage.js';
-import { banner, removeBanner, toast, esc, daysSince } from './ui.js';
+import { banner, removeBanner, toast, esc, daysSince, closeAllModals } from './ui.js';
 import * as placeholder from './pages/placeholder.js';
 import * as pengaturan from './pages/pengaturan.js';
 import * as kasir from './pages/kasir.js';
@@ -27,6 +27,7 @@ async function render() {
   const name = (location.hash.replace(/^#\/?/, '') || DEFAULT_ROUTE).split('?')[0];
   const page = ROUTES[name] || ROUTES[DEFAULT_ROUTE];
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.route === name));
+  closeAllModals();
   if (typeof currentCleanup === 'function') currentCleanup();
   currentCleanup = null;
   try {
@@ -127,12 +128,21 @@ async function backupReminder() {
   for (const s of STORES) if (s !== 'settings') total += await count(s);
   if (total === 0) return;
   const days = daysSince(await getSetting('lastBackupAt'));
-  if (days >= 7) {
+  let snoozed = false;
+  try { snoozed = sessionStorage.getItem('ct-backup-snooze') === '1'; } catch (_) { /* abaikan */ }
+  if (days >= 7 && !snoozed) {
     const el = banner('backup',
       `<span>${days === Infinity ? 'Data belum pernah di-backup.' : `Backup terakhir ${days} hari lalu.`}
-       Data hanya tersimpan di perangkat ini.</span>
-       <a class="btn secondary" href="#/pengaturan">Backup sekarang</a>`);
+       Data hanya tersimpan di iPad ini.</span>
+       <span class="banner-actions">
+         <button type="button" class="btn ghost" data-snooze>Nanti</button>
+         <a class="btn" href="#/pengaturan">Backup sekarang</a>
+       </span>`);
     el.querySelector('a').onclick = () => removeBanner('backup');
+    el.querySelector('[data-snooze]').onclick = () => {
+      try { sessionStorage.setItem('ct-backup-snooze', '1'); } catch (_) { /* abaikan */ }
+      removeBanner('backup');
+    };
   }
 }
 

@@ -33,6 +33,12 @@ export async function render(view) {
   const productById = new Map(products.map((p) => [p.id, p]));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const usedCats = categories.filter((c) => products.some((p) => p.categoryId === c.id));
+  // Warna lembut per kategori (daun, kunyit, cabai, terong, kecap, laut).
+  const TINTS = [
+    ['#e3f4ea', '#17723f'], ['#fdf0cf', '#94640a'], ['#fde3dc', '#ad3720'],
+    ['#eee6f7', '#6a4697'], ['#f1e7dd', '#70492b'], ['#dff0f5', '#1d6b85'],
+  ];
+  const tintOf = new Map(categories.map((c, i) => [c.id, TINTS[i % TINTS.length]]));
 
   const state = {
     cart: new Map(), // productId -> { qty, note }
@@ -148,8 +154,10 @@ export async function render(view) {
       const left = p.trackStock ? (p.stock ?? 0) - inCart : null;
       const out = p.trackStock && left <= 0;
       const cat = p.categoryId ? catById.get(p.categoryId)?.name : '';
+      const [tint, tintInk] = tintOf.get(p.categoryId) || TINTS[0];
       return `
-        <button type="button" class="product-card${inCart ? ' in-cart' : ''}${out ? ' out' : ''}" data-add="${esc(p.id)}">
+        <button type="button" class="product-card${inCart ? ' in-cart' : ''}${out ? ' out' : ''}" data-add="${esc(p.id)}"
+          style="--tint:${tint};--tint-ink:${tintInk}">
           ${inCart ? `<span class="qty-badge">${inCart}</span>` : ''}
           <span class="pc-initial">${esc(p.name.trim().charAt(0).toUpperCase())}</span>
           <span class="pc-name">${esc(p.name)}</span>
