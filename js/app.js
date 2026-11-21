@@ -7,7 +7,7 @@ import * as stok from './pages/stok.js';
 import * as dapur from './pages/dapur.js';
 import * as antrean from './pages/antrean.js';
 import * as laporan from './pages/laporan.js';
-import { listKitchenOrders, listOpenTransactions } from './services/sales.js';
+import { listKitchenOrders, groupKitchenOrders, listOpenTransactions } from './services/sales.js';
 
 // Semua halaman di-import statis agar ikut tersimpan oleh Service Worker.
 const ROUTES = {
@@ -44,7 +44,7 @@ async function render() {
 async function updateBadges() {
   try {
     const [k, o] = await Promise.all([listKitchenOrders(), listOpenTransactions()]);
-    setBadge('dapur', k.length);
+    setBadge('dapur', groupKitchenOrders(k).length);
     setBadge('antrean', o.length);
   } catch (_) { /* abaikan */ }
 }

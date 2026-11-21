@@ -1,6 +1,7 @@
-// Dapur: daftar pesanan yang harus disiapkan. Centang item yang sudah dihidangkan,
-// lalu tekan "Hidangkan" untuk menyelesaikan pesanan.
-import { listKitchenOrders, setItemServed, serveOrder, whoLine } from '../services/sales.js';
+// Dapur: satu kartu per pesanan. Tambahan dari Koreksi tampil di bawah pesanan awal
+// dalam kartu yang sama. Centang item yang sudah dihidangkan, lalu "Hidangkan" untuk
+// menyelesaikan seluruh kartu. Pesanan yang sudah dibayar otomatis hilang dari sini.
+import { listKitchenOrders, groupKitchenOrders, setItemServed, serveOrders, whoLine } from '../services/sales.js';
 import { esc, toast } from '../ui.js';
 
 function elapsed(iso) {
@@ -9,12 +10,28 @@ function elapsed(iso) {
   if (m < 60) return `${m} menit lalu`;
   return `${Math.floor(m / 60)} jam ${m % 60} menit lalu`;
 }
+const clock = (iso) => new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+function itemRows(o) {
+  return o.items.map((it) => `
+    <li class="${it.served ? 'served' : ''}">
+      <button type="button" class="serve-row" data-order="${esc(o.id)}" data-item="${esc(it.itemId || '')}"
+        ${it.itemId ? '' : 'disabled'} aria-pressed="${it.served ? 'true' : 'false'}">
+        <span class="ti-text">
+          <span class="ti-name"><b>${it.qty}×</b> ${esc(it.name)}</span>
+          ${it.note ? `<span class="ti-note">${esc(it.note)}</span>` : ''}
+        </span>
+        <span class="serve-check">${it.served ? '✓' : ''}</span>
+      </button>
+    </li>`).join('');
+}
 
 export async function render(view) {
   let orders = await listKitchenOrders();
 
   const draw = () => {
-    if (!orders.length) {
+    const groups = groupKitchenOrders(orders);
+    if (!groups.length) {
       view.innerHTML = `
         <h1>Dapur</h1>
         <div class="card placeholder">
@@ -25,36 +42,32 @@ export async function render(view) {
       return;
     }
     view.innerHTML = `
-      <div class="page-head"><h1>Dapur</h1><span class="muted">${orders.length} pesanan aktif</span></div>
+      <div class="page-head"><h1>Dapur</h1><span class="muted">${groups.length} pesanan aktif</span></div>
       <div class="kitchen-grid">
-        ${orders.map((o) => {
-          const late = (Date.now() - new Date(o.createdAt).getTime()) / 60000 >= 15;
-          const done = o.items.filter((it) => it.served).length;
+        ${groups.map((g) => {
+          const late = (Date.now() - new Date(g.createdAt).getTime()) / 60000 >= 15;
+          const done = g.items.filter((it) => it.served).length;
           return `
-          <article class="ticket${o.status === 'diproses' ? ' in-progress' : ''}" data-order="${esc(o.id)}">
+          <article class="ticket${done ? ' in-progress' : ''}" data-group="${esc(g.key)}">
             <header class="ticket-head">
               <div>
-                <div class="ticket-who">${esc(whoLine(o) || 'Tanpa nama')}</div>
-                <div class="small muted">#${esc(o.queueNo)}${o.isAddition ? ' · <span class="tag-add">Tambahan</span>' : ''}</div>
+                <div class="ticket-who">${esc(whoLine(g) || 'Tanpa nama')}</div>
+                <div class="small muted">#${esc(g.queueNo)}${g.orders.length > 1 ? ` · ${g.orders.length - 1} tambahan` : ''}</div>
               </div>
-              <div class="ticket-time${late ? ' late' : ''}" data-time="${esc(o.createdAt)}">${elapsed(o.createdAt)}</div>
+              <div class="ticket-time${late ? ' late' : ''}" data-time="${esc(g.createdAt)}">${elapsed(g.createdAt)}</div>
             </header>
-            <ul class="ticket-items">
-              ${o.items.map((it) => `
-                <li class="${it.served ? 'served' : ''}">
-                  <button type="button" class="serve-row" data-item="${esc(it.itemId || '')}" ${it.itemId ? '' : 'disabled'}
-                    aria-pressed="${it.served ? 'true' : 'false'}">
-                    <span class="ti-text">
-                      <span class="ti-name"><b>${it.qty}×</b> ${esc(it.name)}</span>
-                      ${it.note ? `<span class="ti-note">${esc(it.note)}</span>` : ''}
-                    </span>
-                    <span class="serve-check">${it.served ? '✓' : ''}</span>
-                  </button>
-                </li>`).join('')}
-            </ul>
-            ${o.note ? `<p class="ticket-note">📝 ${esc(o.note)}</p>` : ''}
-            <button type="button" class="btn btn-serve" data-serve="${esc(o.id)}">
-              Hidangkan ${done ? `(${done}/${o.items.length})` : ''} ✓
+            ${g.orders.map((o, i) => {
+              const pending = o.items.some((it) => !it.served);
+              return `
+              ${i > 0 ? `<div class="round-sep${pending ? ' is-new' : ''}">
+                  <span>Tambahan${g.orders.length > 2 ? ` ${i}` : ''}</span>
+                  <span class="small">${clock(o.createdAt)}</span>
+                </div>` : ''}
+              <ul class="ticket-items">${itemRows(o)}</ul>
+              ${o.note ? `<p class="ticket-note">📝 ${esc(o.note)}</p>` : ''}`;
+            }).join('')}
+            <button type="button" class="btn btn-serve" data-serve="${esc(g.key)}">
+              Hidangkan ${done ? `(${done}/${g.items.length})` : ''} ✓
             </button>
           </article>`;
         }).join('')}
@@ -68,19 +81,19 @@ export async function render(view) {
     const serveBtn = e.target.closest('[data-serve]');
     try {
       if (row && row.dataset.item) {
-        const orderId = row.closest('[data-order]').dataset.order;
-        const o = orders.find((x) => x.id === orderId);
+        const o = orders.find((x) => x.id === row.dataset.order);
         const it = o.items.find((x) => x.itemId === row.dataset.item);
-        const updated = await setItemServed(orderId, it.itemId, !it.served);
-        orders = orders.map((x) => (x.id === orderId ? updated : x));
+        const updated = await setItemServed(o.id, it.itemId, !it.served);
+        orders = orders.map((x) => (x.id === o.id ? updated : x));
         draw();
       } else if (serveBtn) {
         serveBtn.disabled = true;
-        const o = orders.find((x) => x.id === serveBtn.dataset.serve);
-        await serveOrder(o.id);
-        orders = orders.filter((x) => x.id !== o.id);
+        const g = groupKitchenOrders(orders).find((x) => x.key === serveBtn.dataset.serve);
+        await serveOrders(g.orders.map((o) => o.id));
+        const ids = new Set(g.orders.map((o) => o.id));
+        orders = orders.filter((x) => !ids.has(x.id));
         draw();
-        toast(`${whoLine(o) || '#' + o.queueNo} sudah dihidangkan.`);
+        toast(`${whoLine(g) || '#' + g.queueNo} sudah dihidangkan.`);
         window.dispatchEvent(new Event('ct:data-changed'));
       }
     } catch (err) {
@@ -93,8 +106,8 @@ export async function render(view) {
   const timer = setInterval(async () => {
     if (document.querySelector('.modal-backdrop')) return;
     const fresh = await listKitchenOrders();
-    const changed = fresh.length !== orders.length || fresh.some((o, i) => o.id !== orders[i]?.id || o.updatedAt !== orders[i]?.updatedAt);
-    if (changed) { orders = fresh; draw(); return; }
+    const key = (list) => list.map((o) => `${o.id}:${o.updatedAt}`).sort().join('|');
+    if (key(fresh) !== key(orders)) { orders = fresh; draw(); window.dispatchEvent(new Event('ct:data-changed')); return; }
     view.querySelectorAll('[data-time]').forEach((el) => { el.textContent = elapsed(el.dataset.time); });
   }, 20000);
 

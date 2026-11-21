@@ -293,11 +293,14 @@ export function correctOrder(transactionId, desired) {
   );
 }
 
-/** Bayar tunai pesanan yang masih terbuka. */
+/**
+ * Bayar tunai pesanan yang masih terbuka.
+ * Tiket dapur yang masih aktif untuk pesanan ini ikut ditutup (hilang dari layar Dapur).
+ */
 export function payTransaction(transactionId, cashReceived) {
   const cash = Number(cashReceived);
   if (!Number.isFinite(cash) || cash < 0) return Promise.reject(new Error('Uang diterima tidak valid.'));
-  return withTx(['transactions'], 'readwrite', (s, ctx) => {
+  return withTx(['transactions', 'orders'], 'readwrite', (s, ctx) => {
     s.transactions.get(transactionId).onsuccess = (e) => {
       const trx = e.target.result;
       if (!trx) { ctx.fail(new Error('Transaksi tidak ditemukan.')); return; }
@@ -310,12 +313,62 @@ export function payTransaction(transactionId, cashReceived) {
         paidAt: now.toISOString(), paidDateKey: localDateKey(now), updatedAt: now.toISOString(),
       };
       s.transactions.put(paid);
+      s.orders.index('transactionId').getAll(transactionId).onsuccess = (e2) => {
+        for (const o of e2.target.result) {
+          if (o.status === 'menunggu' || o.status === 'diproses') {
+            s.orders.put({ ...o, status: 'selesai', closedByPayment: true, completedAt: paid.paidAt, updatedAt: paid.paidAt });
+          }
+        }
+      };
       ctx.result = paid;
     };
   });
 }
 
 // ---------- Dapur ----------
+
+/**
+ * Kelompokkan tiket dapur aktif per pesanan (transaksi): pesanan awal + tambahan dalam satu kartu.
+ * Urutan kartu: pesanan yang paling lama menunggu di atas.
+ */
+export function groupKitchenOrders(orders) {
+  const groups = new Map();
+  for (const o of orders) {
+    const key = o.transactionId || o.id;
+    if (!groups.has(key)) groups.set(key, { key, orders: [] });
+    groups.get(key).orders.push(o);
+  }
+  return [...groups.values()]
+    .map((g) => {
+      g.orders.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const last = g.orders[g.orders.length - 1];
+      return {
+        ...g,
+        first: g.orders[0],
+        // nama/meja terbaru (bisa berubah saat koreksi)
+        tableNo: last.tableNo, customerName: last.customerName, queueNo: last.queueNo,
+        createdAt: g.orders[0].createdAt,
+        items: g.orders.flatMap((o) => o.items),
+      };
+    })
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** Hidangkan semua tiket dalam satu kartu sekaligus (satu transaksi DB). */
+export function serveOrders(orderIds) {
+  return withTx(['orders'], 'readwrite', (s, ctx) => {
+    const now = new Date().toISOString();
+    getMany(s.orders, orderIds, (orders) => {
+      if (orders.some((o) => !o)) { ctx.fail(new Error('Pesanan tidak ditemukan.')); return; }
+      for (const o of orders) {
+        s.orders.put({
+          ...o, status: 'selesai', completedAt: now, updatedAt: now,
+          items: o.items.map((it) => (it.served ? it : { ...it, served: true, servedAt: now })),
+        });
+      }
+    });
+  });
+}
 
 /** Centang / batalkan centang satu item pada tiket dapur. */
 export function setItemServed(orderId, itemId, served) {

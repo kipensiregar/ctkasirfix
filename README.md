@@ -4,6 +4,13 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.8.1 — Dapur: satu kartu per pesanan
+
+- Tambahan dari Koreksi tampil di **kartu yang sama** di bawah pesanan awal, dengan pembatas "Tambahan" + jam (kuning jika masih ada yang belum dihidangkan).
+- **Hidangkan** menyelesaikan seluruh kartu (pesanan awal + tambahan) dalam satu transaksi DB.
+- Pesanan yang **dibayar** otomatis ditutup di Dapur (tiket aktif → `selesai`, `closedByPayment`).
+- Badge Dapur menghitung jumlah pesanan, bukan jumlah tiket.
+
 ### v0.8.0 — Struk & tagihan
 
 - **Tagihan** (sebelum bayar) dari rincian pesanan di Antrean; **Struk** setelah bayar (layar Lunas), dari *Lunas hari ini*, dan dari rincian di Laporan.
