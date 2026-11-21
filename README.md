@@ -4,6 +4,13 @@ Aplikasi kasir offline untuk CT Catering. Berjalan sepenuhnya di browser (iPad/S
 
 ## Riwayat tahap
 
+### v0.8.2 — Pindah meja / ubah nama
+
+- Antrean → ketuk pesanan → **Pindah meja / ubah nama** (hanya untuk pesanan belum bayar).
+- Transaksi + semua kartu dapurnya diperbarui sekaligus; tagihan, struk, dan laporan memakai meja baru.
+- Peringatan jika meja tujuan sudah dipakai pesanan lain (pesanan tetap terpisah).
+- Riwayat perpindahan disimpan di transaksi (`infoHistory`).
+
 ### v0.8.1 — Dapur: satu kartu per pesanan
 
 - Tambahan dari Koreksi tampil di **kartu yang sama** di bawah pesanan awal, dengan pembatas "Tambahan" + jam (kuning jika masih ada yang belum dihidangkan).

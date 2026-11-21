@@ -1,11 +1,11 @@
 // Antrean: meja/pesanan yang belum dibayar + riwayat hari ini.
 // Ketuk kartu → lihat daftar pesanan → Koreksi pesanan atau Bayar.
 import {
-  listOpenTransactions, listPaidToday, getTransactionDetail, kitchenSummary, whoLine,
+  listOpenTransactions, listPaidToday, getTransactionDetail, kitchenSummary, whoLine, updateOrderInfo,
 } from '../services/sales.js';
 import { openPayment } from './payment.js';
 import { openReceipt } from '../services/receipt.js';
-import { esc, rupiah, openModal } from '../ui.js';
+import { esc, rupiah, openModal, toast } from '../ui.js';
 
 const time = (iso) => new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
@@ -73,7 +73,8 @@ export async function render(view) {
         <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
       </div>
       <div class="detail-status">${isOpen ? `<span class="badge warn">Belum bayar</span>` : `<span class="badge ok">Lunas</span>`}
-        <span class="badge ${ks.state}">${esc(ks.label)}</span></div>
+        <span class="badge ${ks.state}">${esc(ks.label)}</span>
+        ${isOpen ? '<button type="button" class="btn secondary btn-sm" id="d-move">Pindah meja / ubah nama</button>' : ''}</div>
       ${rounds.map(([round, items]) => `
         ${rounds.length > 1 ? `<div class="round-label">${round === 1 ? 'Pesanan awal' : `Tambahan ${round - 1}`}</div>` : ''}
         <ul class="detail-items">${items.map((it) => `
@@ -94,6 +95,7 @@ export async function render(view) {
     el.querySelector('#d-bill')?.addEventListener('click', () => openReceipt(t.id));
     el.querySelector('#d-receipt')?.addEventListener('click', () => openReceipt(t.id));
     el.querySelector('#d-fix')?.addEventListener('click', () => close());
+    el.querySelector('#d-move')?.addEventListener('click', () => { close(); editInfo(t); });
     el.querySelector('#d-pay')?.addEventListener('click', () => {
       close();
       openPayment(t, () => {
@@ -112,6 +114,50 @@ export async function render(view) {
     }
   }, 20000);
   return () => clearInterval(timer);
+}
+
+/** Form pindah meja / ubah nama. */
+function editInfo(t) {
+  const { el, close } = openModal(`
+    <div class="modal-head"><div><h2>Pindah meja / ubah nama</h2>
+      <div class="small muted">Pesanan #${esc(t.queueNo)} · sekarang ${esc(whoLine(t) || 'tanpa nama')}</div></div>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+    <form id="mv-form" autocomplete="off">
+      <div class="cart-who mv-who">
+        <div class="who-table"><label for="mv-table">No. meja</label>
+          <input id="mv-table" type="text" inputmode="numeric" maxlength="10" value="${esc(t.tableNo || '')}" placeholder="—"></div>
+        <div><label for="mv-name">Nama pemesan</label>
+          <input id="mv-name" type="text" maxlength="60" value="${esc(t.customerName || '')}" placeholder="mis. Bu Rina"></div>
+      </div>
+      <p class="small muted" id="mv-warn" style="margin:10px 0 0">Kartu di Dapur, tagihan, dan struk ikut berubah.</p>
+      <div class="btn-row"><button type="submit" class="btn">Simpan</button></div>
+    </form>`);
+  const table = el.querySelector('#mv-table');
+  const name = el.querySelector('#mv-name');
+  const warn = el.querySelector('#mv-warn');
+  let others = [];
+  const check = () => {
+    const v = table.value.trim().toLowerCase();
+    const clash = v && others.find((x) => (x.tableNo || '').toLowerCase() === v);
+    warn.innerHTML = clash
+      ? `<span class="text-warn">Meja ${esc(table.value.trim())} sudah dipakai pesanan #${esc(clash.queueNo)}${clash.customerName ? ` (${esc(clash.customerName)})` : ''}. Pesanan tetap terpisah.</span>`
+      : 'Kartu di Dapur, tagihan, dan struk ikut berubah.';
+  };
+  listOpenTransactions().then((list) => { others = list.filter((x) => x.id !== t.id); check(); });
+  table.addEventListener('input', check);
+  el.querySelector('#mv-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const u = await updateOrderInfo(t.id, { tableNo: table.value, customerName: name.value });
+      close();
+      toast(`#${u.queueNo}: ${whoLine(t) || 'tanpa nama'} → ${whoLine(u)}`);
+      window.dispatchEvent(new Event('ct:data-changed'));
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    } catch (err) {
+      toast(err.message, { error: true });
+    }
+  });
+  setTimeout(() => { if (!el.contains(document.activeElement)) { table.focus(); table.select(); } }, 50);
 }
 
 function aggregate(items) {

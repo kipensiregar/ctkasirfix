@@ -294,6 +294,34 @@ export function correctOrder(transactionId, desired) {
 }
 
 /**
+ * Pindah meja / ubah nama pemesan untuk pesanan yang belum dibayar.
+ * Transaksi + semua tiket dapurnya diperbarui sekaligus; riwayat perpindahan disimpan.
+ */
+export function updateOrderInfo(transactionId, { tableNo, customerName }) {
+  const t = clean(tableNo, 10);
+  const n = clean(customerName, 60);
+  if (!t && !n) return Promise.reject(new Error('Isi nomor meja atau nama pemesan.'));
+  return withTx(['transactions', 'orders'], 'readwrite', (s, ctx) => {
+    s.transactions.get(transactionId).onsuccess = (e) => {
+      const trx = e.target.result;
+      if (!trx) { ctx.fail(new Error('Pesanan tidak ditemukan.')); return; }
+      if (trx.status !== 'open') { ctx.fail(new Error('Pesanan yang sudah dibayar tidak bisa diubah.')); return; }
+      if ((trx.tableNo || '') === t && (trx.customerName || '') === n) { ctx.fail(new Error('Tidak ada perubahan.')); return; }
+      const now = new Date().toISOString();
+      const updated = {
+        ...trx, tableNo: t, customerName: n, updatedAt: now,
+        infoHistory: [...(trx.infoHistory || []), { at: now, from: { tableNo: trx.tableNo || '', customerName: trx.customerName || '' }, to: { tableNo: t, customerName: n } }],
+      };
+      s.transactions.put(updated);
+      s.orders.index('transactionId').getAll(transactionId).onsuccess = (e2) => {
+        for (const o of e2.target.result) s.orders.put({ ...o, tableNo: t, customerName: n, updatedAt: now });
+      };
+      ctx.result = updated;
+    };
+  });
+}
+
+/**
  * Bayar tunai pesanan yang masih terbuka.
  * Tiket dapur yang masih aktif untuk pesanan ini ikut ditutup (hilang dari layar Dapur).
  */

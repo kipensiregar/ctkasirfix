@@ -533,7 +533,9 @@ table.simple td:last-child { text-align: right; }
 .bill-items { display: flex; flex-direction: column; gap: 2px; font-size: 15px; color: var(--ink-2); }
 .bill-card .badge { align-self: flex-start; }
 
-.detail-status { display: flex; gap: 8px; margin: 6px 0 10px; flex-wrap: wrap; }
+.detail-status { display: flex; gap: 8px; margin: 6px 0 10px; flex-wrap: wrap; align-items: center; }
+.detail-status .btn-sm { margin-left: auto; min-height: 36px; }
+.mv-who { padding: 4px 0 0; border: 0; }
 .round-label { margin: 14px 0 2px; font-size: 13px; font-weight: 650; color: var(--ink-3); }
 .detail-items { list-style: none; margin: 0; padding: 0; }
 .detail-items li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
